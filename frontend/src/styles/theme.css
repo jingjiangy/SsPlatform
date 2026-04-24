@@ -1,0 +1,97 @@
+/**
+ * 全局布局与背景 — 与 Element Plus 变量协同
+ */
+:root {
+  --app-font: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
+
+  /* 字色：在 Element Plus 默认基础上整体加深，主区可读性更好 */
+  --el-text-color-primary: #0f172a;
+  --el-text-color-regular: #273346;
+  --el-text-color-secondary: #3d4a5c;
+  --el-text-color-placeholder: #5a6573;
+  --el-text-color-disabled: #6b7280;
+
+  /* 页面内弱提示、说明、.muted 等 */
+  --app-text-muted: #3d4a5c;
+  --app-text-hint: #4a5568;
+
+  /* 主内容区 */
+  --app-main-bg: #f1f5f9;
+  --app-main-bg-end: #f8fafc;
+  /* 侧栏（灰蓝，比原先深蓝黑浅一档） */
+  --app-aside-bg: #3d4f66;
+  --app-aside-bg-end: #516280;
+  --app-aside-bg-elevated: rgba(255, 255, 255, 0.16);
+  --app-aside-border: rgba(255, 255, 255, 0.12);
+  --app-aside-text: #e2e8f0;
+  --app-aside-text-active: #ffffff;
+  --app-aside-hover: rgba(255, 255, 255, 0.1);
+  /* 顶栏 */
+  --app-header-bg: #ffffff;
+  --app-header-border: rgba(15, 23, 42, 0.06);
+  --app-header-shadow: 0 1px 0 var(--app-header-border), 0 4px 24px rgba(15, 23, 42, 0.04);
+  /* 内容区：占满主栏，仅保留左右内边距（不再限制 max-width） */
+  --app-content-padding-x: clamp(16px, 2vw, 32px);
+  --app-content-padding-y: clamp(16px, 1.5vw, 28px);
+  /* 登录页 */
+  --app-login-bg-1: #e8eef6;
+  --app-login-bg-2: #f8fafc;
+  --app-login-accent: rgba(37, 99, 235, 0.08);
+}
+
+html {
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+  font-family: var(--app-font);
+  color: var(--el-text-color-primary);
+  background-color: var(--app-main-bg);
+}
+
+/* 列表页卡片：统一圆角与轻边框 */
+.el-card {
+  border-radius: 10px;
+  border-color: rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.el-card__header {
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+  font-weight: 600;
+}
+
+/* 表格在浅底上更清晰 */
+.el-table {
+  --el-table-border-color: rgba(15, 23, 42, 0.08);
+}
+
+.el-table th.el-table__cell {
+  background: #f8fafc !important;
+}
+
+.el-table .el-table__body .cell {
+  color: var(--el-text-color-regular);
+}
+
+.el-form-item__label {
+  color: var(--el-text-color-regular);
+}
+
+.el-divider__text {
+  color: var(--el-text-color-primary);
+  font-weight: 600;
+}
+
+.table-pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
