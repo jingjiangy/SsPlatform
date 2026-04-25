@@ -10,6 +10,7 @@
     "gen-cert": "bash scripts/gen-dev-https-cert.sh"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
     "axios": "^1.6.8",
     "element-plus": "^2.6.3",
     "pinia": "^2.1.7",

@@ -1,10 +1,12 @@
-# SsPlatform — Python 依赖（BOS 下载 + 视频浏览）
-# 安装: pip install -r requirements.txt
-
-# 百度智能云 BOS（download_bos_bucket.py，模块名 baidubce）
 bce-python-sdk>=0.9.25
 tqdm>=4.66.0
-
-# 视频浏览服务（video_browser/main.py）
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
+motor>=3.3.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.1
+python-multipart>=0.0.6
+email-validator>=2.1.0
+

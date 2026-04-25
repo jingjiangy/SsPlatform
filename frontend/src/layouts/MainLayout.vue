@@ -1,6 +1,6 @@
 <template>
   <el-container class="layout">
-    <el-aside width="220px" class="aside">
+    <el-aside :width="asideWidth" class="aside" :class="{ 'aside--collapsed': asideCollapsed }">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true" />
         <div class="brand-text">
@@ -50,6 +50,18 @@
     <el-container class="main-col">
       <el-header class="header" height="56px">
         <div class="header-inner">
+          <el-button
+            :aria-label="asideCollapsed ? '展开侧栏' : '收起侧栏'"
+            class="side-toggle"
+            type="primary"
+            text
+            @click="toggleAside"
+          >
+            <el-icon :size="20">
+              <Expand v-if="asideCollapsed" />
+              <Fold v-else />
+            </el-icon>
+          </el-button>
           <span class="user">{{ auth.username }}（{{ roleLabel }}）</span>
           <el-button type="primary" link @click="onLogout">退出</el-button>
         </div>
@@ -64,14 +76,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { Expand, Fold } from "@element-plus/icons-vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore, canSeeModule, type AppModule } from "@/stores/auth";
 
+const ASIDE_COLLAPSED_KEY = "main-layout-aside-collapsed";
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
+const asideCollapsed = ref(false);
+onMounted(() => {
+  const raw = localStorage.getItem(ASIDE_COLLAPSED_KEY);
+  if (raw === "1" || raw === "true") asideCollapsed.value = true;
+});
+watch(asideCollapsed, (v) => {
+  localStorage.setItem(ASIDE_COLLAPSED_KEY, v ? "1" : "0");
+});
+function toggleAside() {
+  asideCollapsed.value = !asideCollapsed.value;
+}
+
+const asideWidth = computed(() => (asideCollapsed.value ? "0px" : "220px"));
 const active = computed(() => route.path.split("?")[0]);
 
 const showSystemGroup = computed(() => canSeeModule("roles") || canSeeModule("users"));
@@ -117,6 +144,19 @@ function onLogout() {
   background: linear-gradient(180deg, var(--app-aside-bg) 0%, var(--app-aside-bg-end) 100%);
   border-right: 1px solid var(--app-aside-border);
   box-shadow: 4px 0 28px rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+  overflow: hidden;
+  transition:
+    width 0.25s ease,
+    min-width 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.aside--collapsed {
+  border-right-color: transparent;
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .brand {
@@ -246,6 +286,19 @@ function onLogout() {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.side-toggle {
+  margin-right: auto;
+  color: var(--el-text-color-primary);
+  min-width: 32px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.side-toggle:hover {
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: var(--el-color-primary) !important;
 }
 
 .main {
