@@ -12,7 +12,9 @@
       </el-table-column>
       <el-table-column prop="_id" label="用户ID" width="200" />
       <el-table-column prop="username" label="用户名" />
-      <el-table-column prop="role" label="角色" />
+      <el-table-column label="角色">
+        <template #default="{ row }">{{ roleDisplayName(String(row.role)) }}</template>
+      </el-table-column>
       <el-table-column prop="phone" label="手机号" />
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
@@ -45,7 +47,7 @@
           <el-input v-model="form.password" type="password" show-password />
         </el-form-item>
         <el-form-item label="角色" required>
-          <el-select v-model="form.role" style="width: 100%" filterable placeholder="选择角色编码">
+          <el-select v-model="form.role" style="width: 100%" filterable placeholder="选择角色">
             <el-option v-for="o in roleOptions" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </el-form-item>
@@ -62,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed, watch } from "vue";
+import { reactive, ref, computed, watch } from "vue";
 import http from "@/api/http";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatDateTime } from "@/utils/datetime";
@@ -78,6 +80,10 @@ function revIdx($index: number) {
   return reverseSerialIndex(total.value, skip.value, $index);
 }
 const roleOptions = ref<{ label: string; value: string }[]>([]);
+
+function roleDisplayName(code: string) {
+  return roleOptions.value.find((o) => o.value === code)?.label ?? code;
+}
 const dlg = ref(false);
 const mode = ref<"add" | "edit">("add");
 const editingId = ref<string | null>(null);
@@ -91,6 +97,7 @@ const form = reactive({
 const dlgTitle = computed(() => (mode.value === "add" ? "添加用户" : "修改用户"));
 
 async function load() {
+  await loadRoleOptions();
   const { data } = await http.get("/api/users", {
     params: { skip: skip.value, limit: pageSize.value },
   });
@@ -108,7 +115,7 @@ async function loadRoleOptions() {
   const { data } = await http.get("/api/roles", { params: { skip: 0, limit: 200 } });
   roleOptions.value = (data.items as Record<string, unknown>[]).map((r) => ({
     value: String(r.code),
-    label: `${r.name}（${r.code}）`,
+    label: String(r.name),
   }));
 }
 
@@ -175,10 +182,6 @@ watch(
   },
   { immediate: true }
 );
-
-onMounted(async () => {
-  await loadRoleOptions();
-});
 </script>
 
 <style scoped>
