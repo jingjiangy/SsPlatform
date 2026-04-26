@@ -16,6 +16,14 @@ ALLOWED_EVAL_VIDEO_EXT = {".mp4", ".webm"}
 ALLOWED_PART_IMAGE_EXT = {".jpg", ".jpeg", ".png"}
 
 
+def _build_upload_url(filename: str) -> str:
+    relative = f"/static/uploads/{filename}"
+    base = settings.upload_base_url.strip().rstrip("/")
+    if not base:
+        return relative
+    return f"{base}{relative}"
+
+
 def ensure_upload_dir() -> Path:
     p = Path(settings.upload_dir)
     p.mkdir(parents=True, exist_ok=True)
@@ -45,7 +53,7 @@ async def save_video_file(file: UploadFile, allowed_ext: Optional[Set[str]] = No
                 dest.unlink(missing_ok=True)
                 raise HTTPException(400, f"文件超过 {settings.max_video_mb}MB")
             f.write(data)
-    return {"video_url": f"/static/uploads/{name}", "filename": name}
+    return {"video_url": _build_upload_url(name), "filename": name}
 
 
 async def save_image_file(file: UploadFile, allowed_ext: Optional[Set[str]] = None) -> dict:
@@ -71,7 +79,7 @@ async def save_image_file(file: UploadFile, allowed_ext: Optional[Set[str]] = No
                 dest.unlink(missing_ok=True)
                 raise HTTPException(400, f"图片超过 {settings.max_image_mb}MB")
             f.write(data)
-    return {"image_url": f"/static/uploads/{name}", "filename": name}
+    return {"image_url": _build_upload_url(name), "filename": name}
 
 
 _STATIC_UPLOAD_PREFIX = "/static/uploads/"

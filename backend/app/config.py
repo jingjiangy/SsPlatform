@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
     upload_dir: str = "uploads"
+    upload_base_url: str = ""
     max_video_mb: int = 1000
     max_image_mb: int = 100
 

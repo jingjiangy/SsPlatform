@@ -21,6 +21,9 @@ ENV/
 .env.*
 backend/.env
 
+# Uploaded user files
+backend/uploads/*.mp4
+
 # Logs
 *.log
 npm-debug.log*
