@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BACK_PORT="${BACK_PORT:-8000}"
+BACK_PORT="${BACK_PORT:-8077}"
 FRONT_PORT="${FRONT_PORT:-5173}"
 
 # 本机局域网 IPv4（用于手机等同网段访问；获取失败则留空）

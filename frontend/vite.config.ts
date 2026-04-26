@@ -35,11 +35,11 @@ export default defineConfig({
     port: 5173,
     https: devHttps(),
     proxy: {
-      "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/static": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/docs": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/redoc": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/openapi.json": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:8077", changeOrigin: true },
+      "/static": { target: "http://127.0.0.1:8077", changeOrigin: true },
+      "/docs": { target: "http://127.0.0.1:8077", changeOrigin: true },
+      "/redoc": { target: "http://127.0.0.1:8077", changeOrigin: true },
+      "/openapi.json": { target: "http://127.0.0.1:8077", changeOrigin: true },
     },
   },
 });
