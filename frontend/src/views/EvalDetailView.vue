@@ -316,6 +316,16 @@ function mediaErrorMessage(err: unknown): string {
 }
 
 function pickMime(): string {
+  // 优先 H.264 MP4：Safari / iOS 上 WebM 常无法解码，录制为 MP4 可正常在列表中回放（若浏览器支持）
+  const mp4 = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/mp4;codecs=hvc1,mp4a.40.2",
+    "video/mp4",
+  ];
+  for (const t of mp4) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) return t;
+  }
   const c = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
   for (const t of c) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) return t;
