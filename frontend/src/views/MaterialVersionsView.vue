@@ -22,16 +22,16 @@
       <el-table-column label="机器人型号" width="120" show-overflow-tooltip>
         <template #default="{ row }">{{ row.robot_device_model || "—" }}</template>
       </el-table-column>
-      <el-table-column label="视频" width="220">
+      <el-table-column label="视频" width="120">
         <template #default="{ row }">
-          <video
+          <el-button
             v-if="row.video_url"
-            :src="resolveMediaUrl(String(row.video_url))"
-            class="table-video"
-            controls
-            playsinline
-            preload="metadata"
-          />
+            link
+            type="primary"
+            @click="openVideoPreview(row)"
+          >
+            预览视频
+          </el-button>
           <span v-else>—</span>
         </template>
       </el-table-column>
@@ -163,6 +163,24 @@
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="videoPreviewOpen"
+      title="视频预览"
+      width="min(720px, 92vw)"
+      destroy-on-close
+      @closed="videoPreviewUrl = ''"
+    >
+      <video
+        v-if="videoPreviewUrl"
+        :key="videoPreviewUrl"
+        :src="videoPreviewUrl"
+        class="preview-video"
+        controls
+        playsinline
+        preload="metadata"
+      />
+    </el-dialog>
   </el-card>
 </template>
 
@@ -199,8 +217,17 @@ const fileLabel = ref("");
 const editFile = ref<File | null>(null);
 const editFileLabel = ref("");
 const editingId = ref<string | null>(null);
+const videoPreviewOpen = ref(false);
+const videoPreviewUrl = ref("");
 
 const canWrite = computed(() => canWriteMaterial());
+
+function openVideoPreview(row: Record<string, unknown>) {
+  const u = row.video_url;
+  if (!u) return;
+  videoPreviewUrl.value = resolveMediaUrl(String(u));
+  videoPreviewOpen.value = true;
+}
 
 const form = reactive({
   name: "",
@@ -400,15 +427,13 @@ onMounted(async () => {
   margin-left: 8px;
   font-weight: 600;
 }
-.table-video {
+.preview-video {
   display: block;
-  width: 200px;
-  max-width: 100%;
-  max-height: 120px;
+  width: 100%;
+  max-height: min(70vh, 520px);
   border-radius: 4px;
   background: #000;
   object-fit: contain;
-  vertical-align: middle;
 }
 .muted {
   margin-left: 8px;
