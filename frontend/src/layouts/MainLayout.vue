@@ -1,63 +1,36 @@
 <template>
   <el-container class="layout">
-    <el-aside :width="asideWidth" class="aside" :class="{ 'aside--collapsed': asideCollapsed }">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true" />
-        <div class="brand-text">
-          <span class="brand-title">模型评估平台</span>
-          <span class="brand-sub">世界模型 · 评测</span>
-        </div>
-      </div>
-      <el-scrollbar class="aside-scroll">
-        <el-menu
-          class="side-menu"
-          :default-active="active"
-          router
-          :default-openeds="['system', 'world', 'device']"
-          background-color="transparent"
-          text-color="#e2e8f0"
-          active-text-color="#ffffff"
-        >
-          <el-sub-menu v-if="showSystemGroup" index="system">
-            <template #title>
-              <span class="sub-title">系统管理</span>
-            </template>
-            <el-menu-item v-if="show('roles')" index="/roles">角色管理</el-menu-item>
-            <el-menu-item v-if="show('users')" index="/users">账号管理</el-menu-item>
-          </el-sub-menu>
-          <el-sub-menu v-if="showWorldGroup" index="world">
-            <template #title>
-              <span class="sub-title">世界模型素材库</span>
-            </template>
-            <el-menu-item v-if="show('materials')" index="/materials">素材库</el-menu-item>
-            <el-menu-item v-if="show('eval')" index="/evaluations">评测记录</el-menu-item>
-          </el-sub-menu>
-          <el-sub-menu v-if="showDeviceGroup" index="device">
-            <template #title>
-              <span class="sub-title">设备管理</span>
-            </template>
-            <el-menu-item v-if="show('device_models')" index="/device-models">设备型号</el-menu-item>
-            <el-menu-item v-if="show('robots')" index="/robots">机器人管理</el-menu-item>
-            <el-menu-item v-if="show('parts')" index="/parts">配件管理</el-menu-item>
-            <el-menu-item v-if="show('fault_records')" index="/fault-records">故障记录</el-menu-item>
-          </el-sub-menu>
-          <el-menu-item v-if="canSeeModule('api_docs')" index="/api-docs" class="single-item">
-            接口文档
-          </el-menu-item>
-        </el-menu>
-      </el-scrollbar>
+    <el-aside
+      v-if="!isCompact"
+      :width="asideWidth"
+      class="aside"
+      :class="{ 'aside--collapsed': asideCollapsed }"
+    >
+      <SideMenu />
     </el-aside>
+    <el-drawer
+      v-else
+      v-model="drawerOpen"
+      direction="ltr"
+      :size="drawerWidth"
+      :show-close="false"
+      :with-header="false"
+      append-to-body
+      class="layout-nav-drawer"
+    >
+      <SideMenu />
+    </el-drawer>
     <el-container class="main-col">
       <el-header class="header" height="56px">
         <div class="header-inner">
           <el-button
-            :aria-label="asideCollapsed ? '展开侧栏' : '收起侧栏'"
+            :aria-label="toggleAriaLabel"
             class="side-toggle"
             type="primary"
             text
             @click="toggleAside"
           >
-            <el-icon :size="20">
+            <el-icon :size="22">
               <Expand v-if="asideCollapsed" />
               <Fold v-else />
             </el-icon>
@@ -77,39 +50,74 @@
 
 <script setup lang="ts">
 import { Expand, Fold } from "@element-plus/icons-vue";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useAuthStore, canSeeModule, type AppModule } from "@/stores/auth";
+import { useAuthStore } from "@/stores/auth";
+import SideMenu from "./SideMenu.vue";
+
+const COMPACT_MAX_CSS_PX = 1023;
 
 const ASIDE_COLLAPSED_KEY = "main-layout-aside-collapsed";
 const auth = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 
+const mqCompact = typeof window !== "undefined" ? window.matchMedia(`(max-width: ${COMPACT_MAX_CSS_PX}px)`) : null;
+const isCompact = ref(mqCompact?.matches ?? false);
+
 const asideCollapsed = ref(false);
+
+const drawerOpen = computed({
+  get: () => isCompact.value && !asideCollapsed.value,
+  set: (open: boolean) => {
+    if (!isCompact.value) return;
+    asideCollapsed.value = !open;
+  },
+});
+
+const drawerWidth = "min(280px, 86vw)";
+
+let unsubscribeMq: (() => void) | undefined;
+
 onMounted(() => {
   const raw = localStorage.getItem(ASIDE_COLLAPSED_KEY);
   if (raw === "1" || raw === "true") asideCollapsed.value = true;
+  if (mqCompact?.matches) asideCollapsed.value = true;
+
+  const onMq = () => {
+    const next = mqCompact!.matches;
+    if (next && !isCompact.value) asideCollapsed.value = true;
+    isCompact.value = next;
+  };
+  mqCompact?.addEventListener("change", onMq);
+  unsubscribeMq = () => mqCompact?.removeEventListener("change", onMq);
 });
+
+onUnmounted(() => {
+  unsubscribeMq?.();
+});
+
 watch(asideCollapsed, (v) => {
   localStorage.setItem(ASIDE_COLLAPSED_KEY, v ? "1" : "0");
 });
+
+watch(
+  () => route.fullPath,
+  () => {
+    if (isCompact.value) asideCollapsed.value = true;
+  }
+);
+
 function toggleAside() {
   asideCollapsed.value = !asideCollapsed.value;
 }
 
 const asideWidth = computed(() => (asideCollapsed.value ? "0px" : "220px"));
-const active = computed(() => route.path.split("?")[0]);
 
-const showSystemGroup = computed(() => canSeeModule("roles") || canSeeModule("users"));
-const showWorldGroup = computed(() => canSeeModule("materials") || canSeeModule("eval"));
-const showDeviceGroup = computed(
-  () =>
-    canSeeModule("robots") ||
-    canSeeModule("device_models") ||
-    canSeeModule("parts") ||
-    canSeeModule("fault_records")
-);
+const toggleAriaLabel = computed(() => {
+  if (isCompact.value) return asideCollapsed.value ? "打开导航菜单" : "关闭导航菜单";
+  return asideCollapsed.value ? "展开侧栏" : "收起侧栏";
+});
 
 const roleLabel = computed(() => {
   const m: Record<string, string> = {
@@ -121,10 +129,6 @@ const roleLabel = computed(() => {
   return m[auth.role || ""] || auth.role || "";
 });
 
-function show(mod: AppModule) {
-  return canSeeModule(mod);
-}
-
 function onLogout() {
   auth.logout();
   router.push("/login");
@@ -133,8 +137,10 @@ function onLogout() {
 
 <style scoped>
 .layout {
-  height: 100vh;
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
   background: var(--app-main-bg);
 }
 
@@ -159,107 +165,6 @@ function onLogout() {
   pointer-events: none;
 }
 
-.brand {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 18px 18px;
-  border-bottom: 1px solid var(--app-aside-border);
-}
-
-.brand-mark {
-  width: 10px;
-  height: 36px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #7dd3fc 0%, #3b82f6 100%);
-  box-shadow: 0 0 16px rgba(59, 130, 246, 0.35);
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.brand-title {
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.02em;
-  color: #f1f5f9;
-  line-height: 1.3;
-}
-
-.brand-sub {
-  font-size: 11px;
-  color: var(--app-aside-text);
-  opacity: 0.9;
-}
-
-.aside-scroll {
-  flex: 1;
-  min-height: 0;
-}
-
-.aside-scroll :deep(.el-scrollbar__wrap) {
-  overflow-x: hidden;
-}
-
-.side-menu {
-  border-right: none !important;
-  padding: 10px 8px 20px;
-}
-
-.side-menu :deep(.el-sub-menu__title) {
-  height: 44px;
-  line-height: 44px;
-  border-radius: 8px;
-  margin-top: 4px;
-  font-size: 13px;
-  color: #e2e8f0 !important;
-}
-
-.side-menu :deep(.el-sub-menu__title:hover) {
-  background: var(--app-aside-hover) !important;
-}
-
-.side-menu :deep(.el-menu-item) {
-  height: 40px;
-  line-height: 40px;
-  border-radius: 8px;
-  margin: 2px 0;
-  font-size: 14px;
-}
-
-.side-menu :deep(.el-menu-item:hover) {
-  background: var(--app-aside-hover) !important;
-}
-
-.side-menu :deep(.el-menu-item.is-active) {
-  background: var(--app-aside-bg-elevated) !important;
-  color: var(--app-aside-text-active) !important;
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
-}
-
-.side-menu :deep(.el-menu--inline) {
-  background: transparent !important;
-}
-
-.side-menu :deep(.el-menu--inline .el-menu-item) {
-  padding-left: 44px !important;
-}
-
-.sub-title {
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-.single-item {
-  margin-top: 8px;
-}
-
 .main-col {
   min-width: 0;
   flex: 1;
@@ -275,6 +180,8 @@ function onLogout() {
   background: var(--app-header-bg);
   border-bottom: 1px solid var(--app-header-border);
   box-shadow: var(--app-header-shadow);
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
 }
 
 .header-inner {
@@ -291,8 +198,9 @@ function onLogout() {
 .side-toggle {
   margin-right: auto;
   color: var(--el-text-color-primary);
-  min-width: 32px;
-  height: 36px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 8px;
   border-radius: 8px;
 }
 
@@ -307,12 +215,14 @@ function onLogout() {
   padding: 0;
   overflow: auto;
   background: transparent;
+  -webkit-overflow-scrolling: touch;
 }
 
 .main-inner {
   width: 100%;
   box-sizing: border-box;
   padding: var(--app-content-padding-y) var(--app-content-padding-x);
+  padding-bottom: calc(var(--app-content-padding-y) + env(safe-area-inset-bottom, 0));
   min-height: calc(100% - 8px);
 }
 
@@ -329,12 +239,21 @@ function onLogout() {
 </style>
 
 <style>
-/* 侧栏菜单：覆盖 Element Plus 默认浅色背景 */
-.layout .side-menu.el-menu {
-  --el-menu-bg-color: transparent;
-  --el-menu-hover-bg-color: transparent;
+/* 平板 / 手机：左侧抽屉导航与侧栏同款底色 */
+.layout-nav-drawer.el-drawer {
+  --el-drawer-padding-primary: 0;
+  background: linear-gradient(180deg, var(--app-aside-bg) 0%, var(--app-aside-bg-end) 100%);
+  box-shadow: 4px 0 28px rgba(15, 23, 42, 0.12);
 }
-.layout .side-menu .el-sub-menu .el-menu {
-  background: transparent !important;
+.layout-nav-drawer .el-drawer__body {
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-left: env(safe-area-inset-left, 0);
+}
+.layout-nav-drawer-body {
+  height: 100%;
+  overflow: hidden;
 }
 </style>

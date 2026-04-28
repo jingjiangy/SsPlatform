@@ -43,6 +43,9 @@
 html {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  /* 平板/手机浏览器地址栏伸缩时，避免仅 100vh 导致底部被裁切 */
+  min-height: 100%;
+  min-height: 100dvh;
 }
 
 html,
@@ -50,10 +53,26 @@ body,
 #app {
   margin: 0;
   min-height: 100%;
+  min-height: 100dvh;
   height: 100%;
   font-family: var(--app-font);
   color: var(--el-text-color-primary);
   background-color: var(--app-main-bg);
+}
+
+/* 列表页卡片正文：表格列多时在整个正文区域横向滚动，顶栏标题不跟着滑走（桌面 + vivo Pad 竖屏均受益） */
+.main-inner .el-card__body {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 触控板 / 平板手指：略增大可点控件（Element 默认多数已够用，此处兜底） */
+@media (pointer: coarse) {
+  .el-button.is-link {
+    min-height: 40px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
 }
 
 /* 列表页卡片：统一圆角与轻边框 */
