@@ -29,7 +29,7 @@
             <span class="sub-title">世界模型素材库</span>
           </template>
           <el-menu-item v-if="show('materials')" index="/materials">素材库</el-menu-item>
-          <el-menu-item v-if="show('eval')" index="/eval-templates">评测模板</el-menu-item>
+          <el-menu-item v-if="show('eval_templates')" index="/eval-templates">评测模板</el-menu-item>
           <el-menu-item v-if="show('eval')" index="/evaluations">评测记录</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="showDeviceGroup" index="device">
@@ -58,7 +58,9 @@ const route = useRoute();
 const active = computed(() => route.path.split("?")[0]);
 
 const showSystemGroup = computed(() => canSeeModule("roles") || canSeeModule("users"));
-const showWorldGroup = computed(() => canSeeModule("materials") || canSeeModule("eval"));
+const showWorldGroup = computed(
+  () => canSeeModule("materials") || canSeeModule("eval_templates") || canSeeModule("eval")
+);
 const showDeviceGroup = computed(
   () =>
     canSeeModule("robots") ||

@@ -38,7 +38,7 @@ const router = createRouter({
         {
           path: "eval-templates",
           name: "eval-templates",
-          meta: { module: "eval" satisfies AppModule },
+          meta: { module: "eval_templates" satisfies AppModule },
           component: () => import("@/views/EvalTemplatesView.vue"),
         },
         {

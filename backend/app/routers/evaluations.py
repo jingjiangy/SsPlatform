@@ -21,7 +21,12 @@ from app.models.evaluation import (
     EvalTaskOut,
     EvalTaskUpdate,
 )
-from app.permissions import P_EVAL_READ, P_EVAL_WRITE
+from app.permissions import (
+    P_EVAL_READ,
+    P_EVAL_TEMPLATE_READ,
+    P_EVAL_TEMPLATE_WRITE,
+    P_EVAL_WRITE,
+)
 from app.services.eval_task_version import compute_next_eval_task_version_for_material
 from app.services.upload import (
     delete_local_upload_file,
@@ -546,7 +551,7 @@ async def delete_record(
 @router.get("/step-templates")
 async def list_step_templates(
     db: DbDep,
-    _: Annotated[dict, Depends(require_permission(P_EVAL_READ))],
+    _: Annotated[dict, Depends(require_permission(P_EVAL_TEMPLATE_READ))],
     skip: int = 0,
     limit: int = 100,
 ):
@@ -581,7 +586,7 @@ async def list_step_templates(
 async def create_step_template(
     body: EvalStepTemplateCreate,
     db: DbDep,
-    user: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+    user: Annotated[dict, Depends(require_permission(P_EVAL_TEMPLATE_WRITE))],
 ):
     now = beijing_now()
     normalized_steps = normalize_template_steps(
@@ -612,7 +617,7 @@ async def update_step_template(
     tpid: str,
     body: EvalStepTemplateUpdate,
     db: DbDep,
-    user: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+    user: Annotated[dict, Depends(require_permission(P_EVAL_TEMPLATE_WRITE))],
 ):
     try:
         oid = ObjectId(tpid)
@@ -661,7 +666,7 @@ async def update_step_template(
 async def delete_step_template(
     tpid: str,
     db: DbDep,
-    _: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+    _: Annotated[dict, Depends(require_permission(P_EVAL_TEMPLATE_WRITE))],
 ):
     try:
         oid = ObjectId(tpid)

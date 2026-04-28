@@ -99,14 +99,14 @@
 import { computed, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import http from "@/api/http";
-import { canWriteMaterial } from "@/stores/auth";
+import { canWriteEvalTemplate } from "@/stores/auth";
 import { EVAL_TEMPLATE_STATUS } from "@/constants/options";
 import { formatDateTime } from "@/utils/datetime";
 import { DEFAULT_PAGE_SIZE, reverseSerialIndex, skipForPage } from "@/utils/pagination";
 
 type StepKV = { step_id: number; name: string; max_score: number };
 
-const canWrite = computed(() => canWriteMaterial());
+const canWrite = computed(() => canWriteEvalTemplate());
 const items = ref<Record<string, unknown>[]>([]);
 const total = ref(0);
 const page = ref(1);

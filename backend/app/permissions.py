@@ -24,6 +24,8 @@ P_MATERIAL_READ = "material:read"
 P_MATERIAL_WRITE = "material:write"
 P_EVAL_READ = "eval:read"
 P_EVAL_WRITE = "eval:write"
+P_EVAL_TEMPLATE_READ = "eval_template:read"
+P_EVAL_TEMPLATE_WRITE = "eval_template:write"
 P_ROBOT_READ = "robot:read"
 P_ROBOT_WRITE = "robot:write"
 P_DEVICE_MODEL_READ = "device_model:read"
@@ -38,6 +40,7 @@ MODULE_ROLES = "roles"
 MODULE_USERS = "users"
 MODULE_MATERIALS = "materials"
 MODULE_EVAL = "eval"
+MODULE_EVAL_TEMPLATES = "eval_templates"
 MODULE_API_DOCS = "api_docs"
 MODULE_ROBOTS = "robots"
 MODULE_DEVICE_MODELS = "device_models"
@@ -49,6 +52,7 @@ VALID_MODULES: tuple[str, ...] = (
     MODULE_USERS,
     MODULE_MATERIALS,
     MODULE_EVAL,
+    MODULE_EVAL_TEMPLATES,
     MODULE_API_DOCS,
     MODULE_ROBOTS,
     MODULE_DEVICE_MODELS,
@@ -68,6 +72,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P_MATERIAL_WRITE,
         P_EVAL_READ,
         P_EVAL_WRITE,
+        P_EVAL_TEMPLATE_READ,
+        P_EVAL_TEMPLATE_WRITE,
         P_ROBOT_READ,
         P_ROBOT_WRITE,
         P_DEVICE_MODEL_READ,
@@ -84,6 +90,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P_MATERIAL_READ,
         P_EVAL_READ,
         P_EVAL_WRITE,
+        P_EVAL_TEMPLATE_READ,
+        P_EVAL_TEMPLATE_WRITE,
         P_ROBOT_READ,
         P_DEVICE_MODEL_READ,
         P_PART_READ,
@@ -95,6 +103,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P_MATERIAL_WRITE,
         P_EVAL_READ,
         P_EVAL_WRITE,
+        P_EVAL_TEMPLATE_READ,
+        P_EVAL_TEMPLATE_WRITE,
         P_ROBOT_READ,
         P_ROBOT_WRITE,
         P_DEVICE_MODEL_READ,
@@ -121,6 +131,7 @@ DEFAULT_MODULES_BY_ROLE_CODE: dict[str, list[str]] = {
         MODULE_USERS,
         MODULE_MATERIALS,
         MODULE_EVAL,
+        MODULE_EVAL_TEMPLATES,
         MODULE_ROBOTS,
         MODULE_DEVICE_MODELS,
         MODULE_PARTS,
@@ -131,6 +142,7 @@ DEFAULT_MODULES_BY_ROLE_CODE: dict[str, list[str]] = {
         MODULE_USERS,
         MODULE_MATERIALS,
         MODULE_EVAL,
+        MODULE_EVAL_TEMPLATES,
         MODULE_ROBOTS,
         MODULE_DEVICE_MODELS,
         MODULE_PARTS,
@@ -140,6 +152,7 @@ DEFAULT_MODULES_BY_ROLE_CODE: dict[str, list[str]] = {
     RoleCode.RD.value: [
         MODULE_MATERIALS,
         MODULE_EVAL,
+        MODULE_EVAL_TEMPLATES,
         MODULE_ROBOTS,
         MODULE_DEVICE_MODELS,
         MODULE_PARTS,
@@ -174,6 +187,8 @@ def expand_modules_to_api_permissions(modules: list[str], role_code: Optional[st
                 out.add(P_MATERIAL_WRITE)
         elif m == MODULE_EVAL:
             out.update({P_EVAL_READ, P_EVAL_WRITE})
+        elif m == MODULE_EVAL_TEMPLATES:
+            out.update({P_EVAL_TEMPLATE_READ, P_EVAL_TEMPLATE_WRITE})
         elif m == MODULE_ROBOTS:
             out.add(P_ROBOT_READ)
             if role_code not in (RoleCode.COLLECTOR.value, RoleCode.EVALUATOR.value):

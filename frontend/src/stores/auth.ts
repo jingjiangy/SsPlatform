@@ -10,6 +10,7 @@ export type AppModule =
   | "users"
   | "materials"
   | "eval"
+  | "eval_templates"
   | "robots"
   | "device_models"
   | "parts"
@@ -35,6 +36,7 @@ function legacyModulesByRole(role: string): Set<AppModule> {
       "users",
       "materials",
       "eval",
+      "eval_templates",
       "robots",
       "device_models",
       "parts",
@@ -45,6 +47,7 @@ function legacyModulesByRole(role: string): Set<AppModule> {
       "users",
       "materials",
       "eval",
+      "eval_templates",
       "robots",
       "device_models",
       "parts",
@@ -54,6 +57,7 @@ function legacyModulesByRole(role: string): Set<AppModule> {
     rd: new Set([
       "materials",
       "eval",
+      "eval_templates",
       "robots",
       "device_models",
       "parts",
@@ -155,6 +159,15 @@ export function canWriteMaterial(): boolean {
   return r === "admin" || r === "evaluator" || r === "rd";
 }
 
+export function canWriteEvalTemplate(): boolean {
+  const p = parseJsonArray("perms");
+  if (p.length > 0) {
+    return p.includes("eval_template:write");
+  }
+  const r = localStorage.getItem("role") || "";
+  return r === "admin" || r === "evaluator" || r === "rd";
+}
+
 export function canWriteRobot(): boolean {
   const p = parseJsonArray("perms");
   if (p.length > 0) {
@@ -196,6 +209,7 @@ export function getFirstAccessiblePath(): string {
   const pairs: [AppModule, string][] = [
     ["materials", "/materials"],
     ["eval", "/evaluations"],
+    ["eval_templates", "/eval-templates"],
     ["device_models", "/device-models"],
     ["parts", "/parts"],
     ["fault_records", "/fault-records"],

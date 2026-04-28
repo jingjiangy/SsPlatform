@@ -4,6 +4,7 @@ export const ROLE_MODULE_OPTIONS: { value: string; label: string }[] = [
   { value: "users", label: "账号管理" },
   { value: "materials", label: "素材库" },
   { value: "eval", label: "评测管理" },
+  { value: "eval_templates", label: "评测模板" },
   { value: "device_models", label: "设备型号" },
   { value: "robots", label: "机器人管理" },
   { value: "parts", label: "配件管理" },

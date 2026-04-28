@@ -14,6 +14,7 @@ from app.models.common import beijing_now
 from app.permissions import (
     DEFAULT_MODULES_BY_ROLE_CODE,
     MODULE_DEVICE_MODELS,
+    MODULE_EVAL_TEMPLATES,
     MODULE_FAULT_RECORDS,
     MODULE_PARTS,
     MODULE_ROBOTS,
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI):
     await migrate_device_models_module()
     await migrate_parts_module()
     await migrate_fault_records_module()
+    await migrate_eval_templates_module()
     yield
     await close_db()
 
@@ -123,6 +125,20 @@ async def migrate_parts_module() -> None:
         await db["roles"].update_many(
             {"code": code, "modules": {"$type": "array"}},
             {"$addToSet": {"modules": MODULE_PARTS}},
+        )
+
+
+async def migrate_eval_templates_module() -> None:
+    """为已落库的内置角色追加「评测模板」模块。"""
+    db = get_db()
+    for code in (
+        RoleCode.ADMIN.value,
+        RoleCode.EVALUATOR.value,
+        RoleCode.RD.value,
+    ):
+        await db["roles"].update_many(
+            {"code": code, "modules": {"$type": "array"}},
+            {"$addToSet": {"modules": MODULE_EVAL_TEMPLATES}},
         )
 
 
