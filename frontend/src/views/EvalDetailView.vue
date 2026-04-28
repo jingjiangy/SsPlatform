@@ -125,7 +125,7 @@
                 <span class="step-name">{{ st.name }}</span>
                 <span class="step-max">满分 {{ st.max_score }}</span>
               </div>
-              <div class="step-score-actions">
+              <div class="step-score-actions step-score-toolbar">
                 <el-input-number
                   v-model="stepScoreMap[st.id]"
                   :min="0"
@@ -134,8 +134,9 @@
                   controls-position="right"
                   class="step-score-input"
                 />
-                <el-button size="small" type="success" plain @click="markStepSuccess(st.id, st.max_score)">Success</el-button>
-                <el-button size="small" type="danger" plain @click="markStepFail(st.id)">Fail</el-button>
+                <el-button class="step-score-btn" size="small" type="warning" plain @click="markStepRetry(st.id, st.max_score)">Retry</el-button>
+                <el-button class="step-score-btn" size="small" type="success" plain @click="markStepSuccess(st.id, st.max_score)">Success</el-button>
+                <el-button class="step-score-btn" size="small" type="danger" plain @click="markStepFail(st.id)">Fail</el-button>
               </div>
             </div>
             <div class="steps-panel-total">
@@ -212,7 +213,7 @@
         </el-form-item>
         <template v-if="hasTaskSteps">
           <el-divider>评测步骤得分</el-divider>
-          <div v-for="(st, idx) in taskSteps" :key="'edit-' + st.id" class="step-score-row-edit">
+          <div v-for="(st, idx) in taskSteps" :key="'edit-' + st.id" class="step-score-row-edit step-score-toolbar">
             <span class="step-index">第{{ idx + 1 }}步</span>
             <span class="step-name">{{ st.name }}</span>
             <span class="muted">满分 {{ st.max_score }}</span>
@@ -222,10 +223,11 @@
               :max="st.max_score"
               :precision="2"
               controls-position="right"
-              style="width: 160px"
+              class="step-score-input step-score-input--edit"
             />
-            <el-button size="small" type="success" plain @click="markEditStepSuccess(st.id, st.max_score)">Success</el-button>
-            <el-button size="small" type="danger" plain @click="markEditStepFail(st.id)">Fail</el-button>
+            <el-button class="step-score-btn" size="small" type="warning" plain @click="markEditStepRetry(st.id, st.max_score)">Retry</el-button>
+            <el-button class="step-score-btn" size="small" type="success" plain @click="markEditStepSuccess(st.id, st.max_score)">Success</el-button>
+            <el-button class="step-score-btn" size="small" type="danger" plain @click="markEditStepFail(st.id)">Fail</el-button>
           </div>
         </template>
         <el-form-item label="重传视频">
@@ -286,6 +288,13 @@ const taskId = computed(() => String(route.params.taskId));
 const taskDetail = ref<Record<string, unknown> | null>(null);
 const stepScoreMap = reactive<Record<string, number>>({});
 const editStepScoreMap = reactive<Record<string, number>>({});
+/** 每步 Retry：1→80% 满分，2→50%，第 3 次归零重计 */
+const stepRetryMap = reactive<Record<string, number>>({});
+const editStepRetryMap = reactive<Record<string, number>>({});
+
+function roundStepScore(v: number): number {
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
 
 const taskSteps = computed(() => {
   const raw = taskDetail.value?.steps;
@@ -372,19 +381,56 @@ function openRecordStepDetail(row: Record<string, unknown>) {
 }
 
 function markStepSuccess(stepId: string, maxScore: number) {
+  stepRetryMap[stepId] = 0;
   stepScoreMap[stepId] = Number(maxScore) || 0;
 }
 
 function markStepFail(stepId: string) {
+  stepRetryMap[stepId] = 0;
   stepScoreMap[stepId] = 0;
 }
 
+/** 第 1 次 80%，第 2 次 50%，第 3 次分数与 retry 归零（重计） */
+function markStepRetry(stepId: string, maxScore: number) {
+  const mx = Number(maxScore) || 0;
+  if (mx <= 0) return;
+  const n = stepRetryMap[stepId] ?? 0;
+  if (n === 0) {
+    stepScoreMap[stepId] = roundStepScore(mx * 0.8);
+    stepRetryMap[stepId] = 1;
+  } else if (n === 1) {
+    stepScoreMap[stepId] = roundStepScore(mx * 0.5);
+    stepRetryMap[stepId] = 2;
+  } else if (n === 2) {
+    stepScoreMap[stepId] = 0;
+    stepRetryMap[stepId] = 0;
+  }
+}
+
 function markEditStepSuccess(stepId: string, maxScore: number) {
+  editStepRetryMap[stepId] = 0;
   editStepScoreMap[stepId] = Number(maxScore) || 0;
 }
 
 function markEditStepFail(stepId: string) {
+  editStepRetryMap[stepId] = 0;
   editStepScoreMap[stepId] = 0;
+}
+
+function markEditStepRetry(stepId: string, maxScore: number) {
+  const mx = Number(maxScore) || 0;
+  if (mx <= 0) return;
+  const n = editStepRetryMap[stepId] ?? 0;
+  if (n === 0) {
+    editStepScoreMap[stepId] = roundStepScore(mx * 0.8);
+    editStepRetryMap[stepId] = 1;
+  } else if (n === 1) {
+    editStepScoreMap[stepId] = roundStepScore(mx * 0.5);
+    editStepRetryMap[stepId] = 2;
+  } else if (n === 2) {
+    editStepScoreMap[stepId] = 0;
+    editStepRetryMap[stepId] = 0;
+  }
 }
 
 async function loadTaskDetail() {
@@ -394,8 +440,12 @@ async function loadTaskDetail() {
     for (const k of Object.keys(stepScoreMap)) {
       delete stepScoreMap[k];
     }
+    for (const k of Object.keys(stepRetryMap)) {
+      delete stepRetryMap[k];
+    }
     for (const st of taskSteps.value) {
       stepScoreMap[st.id] = 0;
+      stepRetryMap[st.id] = 0;
     }
   } catch {
     taskDetail.value = null;
@@ -805,6 +855,7 @@ async function submitRecord() {
     durationSeconds.value = 0;
     for (const st of taskSteps.value) {
       stepScoreMap[st.id] = 0;
+      stepRetryMap[st.id] = 0;
     }
     await loadRecords();
   } finally {
@@ -826,10 +877,14 @@ function openEditRecord(row: Record<string, unknown>) {
   for (const k of Object.keys(editStepScoreMap)) {
     delete editStepScoreMap[k];
   }
+  for (const k of Object.keys(editStepRetryMap)) {
+    delete editStepRetryMap[k];
+  }
   const rowScores = row.step_scores as { step_id?: string; score?: number }[] | undefined;
   for (const st of taskSteps.value) {
     const found = Array.isArray(rowScores) ? rowScores.find((x) => x?.step_id === st.id) : undefined;
     editStepScoreMap[st.id] = found != null ? Number(found.score) : 0;
+    editStepRetryMap[st.id] = 0;
   }
   editVideoTouched.value = false;
   editDlg.value = true;
@@ -1151,15 +1206,41 @@ onUnmounted(() => {
 }
 
 .step-score-input {
-  width: 100%;
-  max-width: 200px;
+  width: 96px;
+  max-width: 96px;
+  flex-shrink: 0;
+}
+
+.step-score-input--edit {
+  max-width: 96px;
+}
+
+.step-score-toolbar :deep(.step-score-input) {
+  width: 96px;
+  max-width: 96px;
+}
+
+.step-score-toolbar :deep(.step-score-input .el-input__wrapper) {
+  padding-left: 6px;
+  padding-right: 4px;
 }
 
 .step-score-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 4px;
+}
+
+.step-score-toolbar :deep(.step-score-btn.el-button--small) {
+  padding: 2px 5px;
+  font-size: 11px;
+  min-height: 22px;
+  margin-left: 0;
+}
+
+.step-score-toolbar :deep(.step-score-btn.el-button + .step-score-btn.el-button) {
+  margin-left: 0;
 }
 
 .steps-panel-total {
@@ -1173,7 +1254,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   margin-bottom: 10px;
 }
 

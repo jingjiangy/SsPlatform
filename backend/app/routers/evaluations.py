@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import re
 import uuid
 from typing import Annotated, Any, Optional
+from urllib.parse import quote_plus
+from urllib.request import Request, urlopen
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -39,6 +44,8 @@ from app.services.user_display import actor_label_from_payload, enrich_actor_fie
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
 
 STEP_TEMPLATES_COLLECTION = "eval_step_templates"
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def normalize_task_steps(rows: list[EvalStepIncoming]) -> list[dict[str, Any]]:
@@ -423,6 +430,46 @@ async def get_task_step_avg(
         "template_id": str(task.get("template_id")) if task.get("template_id") else None,
         "items": items,
     }
+
+
+@router.get("/translate/zh-to-en")
+async def translate_zh_to_en(
+    q: str,
+    _: Annotated[dict, Depends(require_permission(P_EVAL_READ))],
+):
+    """将短文本中译英（MyMemory 免费接口，仅供步骤名展示）。失败时退回原文。"""
+    text = (q or "").strip()
+    if not text:
+        return {"text": ""}
+    if _CJK_RE.search(text) is None:
+        return {"text": text}
+    if len(text) > 800:
+        text = text[:800]
+
+    def _fetch() -> dict[str, Any]:
+        enc = quote_plus(text)
+        url = f"https://api.mymemory.translated.net/get?q={enc}&langpair=zh-CN|en"
+        req = Request(url, headers={"User-Agent": "SsPlatform-eval/1"})
+        with urlopen(req, timeout=25) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+
+    try:
+        payload = await asyncio.to_thread(_fetch)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="翻译服务暂不可用") from exc
+
+    out = ""
+    if isinstance(payload, dict):
+        rd = payload.get("responseData")
+        if isinstance(rd, dict):
+            t = rd.get("translatedText")
+            out = str(t).strip() if isinstance(t, str) else ""
+        elif isinstance(rd, str):
+            out = rd.strip()
+    if out:
+        return {"text": out}
+    return {"text": text}
 
 
 @router.post("/tasks/{tid}/records")

@@ -67,7 +67,7 @@
           <span>步骤ID</span>
           <span>步骤名称(k)</span>
           <span>步骤分值(v)</span>
-          <span />
+          <span class="step-head-actions">操作</span>
         </div>
         <div v-for="(s, idx) in form.steps" :key="idx" class="step-row">
           <el-input :model-value="String(s.step_id)" readonly />
@@ -80,7 +80,10 @@
             controls-position="right"
             style="width: 160px"
           />
-          <el-button link type="danger" @click="removeStep(idx)">删除</el-button>
+          <div class="step-row-actions">
+            <el-button link type="primary" title="在此步之前插入" @click="insertStepBefore(idx)">+</el-button>
+            <el-button link type="danger" @click="removeStep(idx)">删除</el-button>
+          </div>
         </div>
         <div class="step-foot">
           <el-button plain @click="addStep">添加步骤</el-button>
@@ -151,6 +154,13 @@ function resequenceStepIds() {
 
 function addStep() {
   form.steps.push({ step_id: form.steps.length + 1, name: "", max_score: 0 });
+  resequenceStepIds();
+  rebalanceStepScores();
+}
+
+/** 在当前步骤之前插入一行（补漏步），末尾仍用「添加步骤」 */
+function insertStepBefore(idx: number) {
+  form.steps.splice(idx, 0, { step_id: 0, name: "", max_score: 0 });
   resequenceStepIds();
   rebalanceStepScores();
 }
@@ -275,8 +285,19 @@ watch(
 .step-head,
 .step-row {
   display: grid;
-  grid-template-columns: 96px 1fr 170px 72px;
+  grid-template-columns: 96px 1fr 170px 120px;
   gap: 10px;
+  align-items: center;
+}
+
+.step-head-actions {
+  text-align: left;
+}
+
+.step-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   align-items: center;
 }
 

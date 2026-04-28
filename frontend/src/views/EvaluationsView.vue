@@ -118,12 +118,15 @@
           <div class="steps-edit-head">
             <span class="col-name">步骤名称</span>
             <span class="col-score">满分</span>
-            <span class="col-act" />
+            <span class="col-act">操作</span>
           </div>
           <div v-for="(s, idx) in form.steps" :key="idx" class="steps-edit-row">
             <el-input v-model="s.name" placeholder="步骤名称" maxlength="256" show-word-limit />
             <el-input-number v-model="s.max_score" :min="0.01" :max="1000000" :precision="2" controls-position="right" />
-            <el-button link type="danger" @click="removeStepRow(idx)">删除</el-button>
+            <div class="steps-edit-actions">
+              <el-button link type="primary" title="在此步之前插入" @click="insertStepRowBefore(idx)">+</el-button>
+              <el-button link type="danger" @click="removeStepRow(idx)">删除</el-button>
+            </div>
           </div>
           <p v-if="!form.steps.length" class="muted step-empty">未配置步骤时，录入页不显示「步骤打分」列。</p>
         </div>
@@ -134,17 +137,28 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="stepAvgDlg" title="评测步骤平均分详情" width="700px">
+    <el-dialog v-model="stepAvgDlg" title="Avg. step total" width="700px" @closed="resetStepAvgLang">
+      <div class="step-avg-toolbar">
+        <p class="step-avg-total-summary">Avg. step total: <strong>{{ stepAvgHeaderTotal }}</strong></p>
+        <el-button
+          size="small"
+          plain
+          :loading="stepAvgTranslating"
+          @click="toggleStepAvgEnglish"
+        >
+          {{ stepAvgEnglishMode ? "To 中文" : "To English" }}
+        </el-button>
+      </div>
       <el-table v-loading="stepAvgLoading" :data="stepAvgItems" border stripe>
-        <el-table-column prop="step_id" label="步骤ID" width="120" />
-        <el-table-column prop="step_name" label="步骤名称" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="max_score" label="满分" width="100" align="right" />
-        <el-table-column prop="avg_score" label="平均分" width="100" align="right" />
+        <el-table-column prop="step_id" label="ID" width="120" />
+        <el-table-column label="Name" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ stepAvgDisplayName(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="max_score" label="Pts" width="100" align="right" />
+        <el-table-column prop="avg_score" label="Avg" width="100" align="right" />
       </el-table>
-      <p class="muted">评测模板ID：{{ stepAvgTemplateId || "—" }}</p>
-      <template #footer>
-        <el-button @click="stepAvgDlg = false">关闭</el-button>
-      </template>
     </el-dialog>
   </el-card>
 </template>
@@ -158,6 +172,7 @@ import { EVAL_TASK_TYPES, EVAL_TASK_STATUS } from "@/constants/options";
 import { canWriteMaterial } from "@/stores/auth";
 import { formatDateTime } from "@/utils/datetime";
 import { DEFAULT_PAGE_SIZE, reverseSerialIndex, skipForPage } from "@/utils/pagination";
+import { translateZhToEnEval } from "@/utils/translateEval";
 
 const router = useRouter();
 const items = ref<Record<string, unknown>[]>([]);
@@ -173,8 +188,48 @@ const dlg = ref(false);
 const editingId = ref<string | null>(null);
 const stepAvgDlg = ref(false);
 const stepAvgLoading = ref(false);
-const stepAvgTemplateId = ref<string | null>(null);
+const stepAvgHeaderTotal = ref(0);
 const stepAvgItems = ref<{ step_id: string; step_name: string; max_score: number; avg_score: number }[]>([]);
+const stepAvgEnglishMode = ref(false);
+const stepAvgTranslating = ref(false);
+/** step_id → 英文步骤名缓存（当前弹窗会话内有效） */
+const stepAvgNameEnById = reactive<Record<string, string>>({});
+
+function resetStepAvgLang() {
+  stepAvgEnglishMode.value = false;
+  stepAvgTranslating.value = false;
+  for (const k of Object.keys(stepAvgNameEnById)) {
+    delete stepAvgNameEnById[k];
+  }
+}
+
+function stepAvgDisplayName(row: { step_id: string; step_name: string }) {
+  const sid = String(row.step_id ?? "");
+  if (stepAvgEnglishMode.value && stepAvgNameEnById[sid]) {
+    return stepAvgNameEnById[sid];
+  }
+  return row.step_name;
+}
+
+async function toggleStepAvgEnglish() {
+  if (stepAvgEnglishMode.value) {
+    stepAvgEnglishMode.value = false;
+    return;
+  }
+  stepAvgTranslating.value = true;
+  try {
+    for (const row of stepAvgItems.value) {
+      const sid = String(row.step_id ?? "");
+      if (!sid || stepAvgNameEnById[sid]) continue;
+      stepAvgNameEnById[sid] = await translateZhToEnEval(String(row.step_name ?? ""));
+    }
+    stepAvgEnglishMode.value = true;
+  } catch {
+    ElMessage.error("翻译失败，请稍后重试");
+  } finally {
+    stepAvgTranslating.value = false;
+  }
+}
 
 const canWrite = computed(() => canWriteMaterial());
 
@@ -227,11 +282,12 @@ function hasStepConfig(row: Record<string, unknown>) {
 async function openStepAvgDialog(row: Record<string, unknown>) {
   const tid = String(row._id || "");
   if (!tid) return;
+  resetStepAvgLang();
+  stepAvgHeaderTotal.value = Number(row.avg_total_score) || 0;
   stepAvgLoading.value = true;
   try {
     const { data } = await http.get(`/api/evaluations/tasks/${tid}/step-avg`);
     stepAvgItems.value = ((data as { items?: unknown[] }).items || []) as typeof stepAvgItems.value;
-    stepAvgTemplateId.value = (data as { template_id?: string | null }).template_id || null;
     stepAvgDlg.value = true;
   } finally {
     stepAvgLoading.value = false;
@@ -262,6 +318,11 @@ function onDlgOpen() {
 
 function pushStepRow() {
   form.steps.push({ name: "", max_score: 10 });
+}
+
+/** 在当前步骤之前插入一行；末尾追加仍用「添加步骤」 */
+function insertStepRowBefore(idx: number) {
+  form.steps.splice(idx, 0, { name: "", max_score: 10 });
 }
 
 function removeStepRow(idx: number) {
@@ -414,7 +475,7 @@ watch(
 
 .steps-edit-head {
   display: grid;
-  grid-template-columns: 1fr 140px 72px;
+  grid-template-columns: 1fr 140px 120px;
   gap: 10px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
@@ -424,14 +485,40 @@ watch(
 
 .steps-edit-row {
   display: grid;
-  grid-template-columns: 1fr 140px 72px;
+  grid-template-columns: 1fr 140px 120px;
   gap: 10px;
   align-items: center;
   margin-bottom: 8px;
 }
 
+.steps-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
 .step-empty {
   margin: 8px 4px 0;
   font-size: 13px;
+}
+
+.step-avg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.step-avg-total-summary {
+  margin: 0;
+  font-size: 14px;
+}
+
+.step-avg-toolbar .step-avg-total-summary {
+  flex: 1;
+  min-width: 200px;
 }
 </style>
