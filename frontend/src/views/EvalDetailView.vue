@@ -3,94 +3,118 @@
     <template #header>
       <div class="row">
         <el-button link @click="$router.push('/evaluations')">← 返回</el-button>
-        <span>评测录入 — 任务 {{ taskId }}</span>
+        <span class="header-title">评测录入 — 任务 <code class="task-id">{{ taskId }}</code></span>
       </div>
     </template>
 
     <el-divider>录入新记录</el-divider>
-    <el-form :model="form" label-width="140px" class="form">
-      <el-form-item label="动作执行描述">
-        <el-input v-model="form.action_description" type="textarea" :rows="4" />
-      </el-form-item>
-      <el-form-item label="动作视频录制">
-        <div class="rec">
-          <div class="video-wrap">
-            <video
-              v-show="camOn"
-              ref="videoEl"
-              class="preview"
-              autoplay
-              muted
-              playsinline
-            />
-            <div v-if="!camOn" class="preview placeholder">监控画面：请先开启摄像头</div>
-            <div v-if="recording" class="rec-badge">● 录制中</div>
+    <el-form
+      :model="form"
+      class="form entry-record-form"
+      :class="{ 'form--narrow': narrowForm }"
+      :label-position="narrowForm ? 'top' : 'left'"
+      :label-width="narrowForm ? 'auto' : '118px'"
+    >
+      <el-row :gutter="narrowForm ? 0 : 20" class="entry-layout-row">
+        <!-- 左：视频预览 → 选摄像头 → 录制操作 → 上传 -->
+        <el-col :xs="24" :md="12" class="entry-col entry-col--left">
+          <el-form-item label="动作视频录制">
+            <div class="rec">
+              <div class="video-wrap">
+                <video
+                  v-show="camOn"
+                  ref="videoEl"
+                  class="preview"
+                  autoplay
+                  muted
+                  playsinline
+                />
+                <div v-if="!camOn" class="preview placeholder">监控画面：请先开启摄像头</div>
+                <div v-if="recording" class="rec-badge">● 录制中</div>
+              </div>
+            </div>
+          </el-form-item>
+          <el-form-item label="选择摄像头">
+            <div class="rec">
+              <div v-if="videoDevices.length" class="cam-select-row cam-select-row--3">
+                <el-select
+                  v-model="selectedCameraId"
+                  placeholder="选择摄像头"
+                  filterable
+                  clearable
+                  class="cam-select"
+                  :disabled="camOn || recording"
+                >
+                  <el-option label="系统默认（浏览器自行选择）" value="" />
+                  <el-option
+                    v-for="d in videoDevices"
+                    :key="d.deviceId"
+                    :label="d.label"
+                    :value="d.deviceId"
+                  />
+                </el-select>
+                <el-button link type="primary" :disabled="camOn || recording" @click="refreshVideoDevices">
+                  刷新设备列表
+                </el-button>
+              </div>
+              <div v-else-if="canEnumerateVideoDevices" class="cam-select-row cam-select-row--3">
+                <span class="hint cam-hint-inline">未枚举到摄像头，若已连接可点刷新。</span>
+                <el-button link type="primary" :disabled="camOn || recording" @click="refreshVideoDevices">
+                  刷新设备列表
+                </el-button>
+              </div>
+              <p v-if="videoDevices.length" class="hint">
+                多摄像头时在此选择；设备名称在浏览器授权后会更准确。
+              </p>
+            </div>
+          </el-form-item>
+          <el-form-item label="开启摄像头">
+            <div class="rec">
+              <div class="btns btns-rec">
+                <el-button v-if="!camOn" type="primary" @click="startCam">开启摄像头</el-button>
+                <template v-else>
+                  <el-button type="primary" :disabled="recording" @click="startRec">开始</el-button>
+                  <el-button type="success" :disabled="!recording" :loading="uploadingRec" @click="stopRecSave">
+                    保存
+                  </el-button>
+                  <el-button :disabled="!recording" @click="abortRec">放弃</el-button>
+                  <el-button v-if="!recording" @click="stopCam">关闭</el-button>
+                </template>
+              </div>
+              <p class="hint">开启摄像头后可「开始」；录制中可「保存」上传，或「放弃」丢弃本次片段。</p>
+              <p v-if="showCamHttpHint" class="hint hint-warn">
+                通过「局域网 IP + http」访问时，多数浏览器会禁止摄像头/麦克风；请改用本机
+                <strong>localhost</strong> 或 <strong>https</strong>，或直接使用右侧「或上传 mp4」。
+              </p>
+              <div v-if="uploadedUrl" class="muted">已上传：{{ uploadedUrl }}</div>
+            </div>
+          </el-form-item>
+          <el-form-item label="或上传 mp4">
+            <el-upload :auto-upload="false" :show-file-list="false" accept="video/mp4,video/webm" @change="onUploadFile">
+              <el-button>选择文件上传</el-button>
+            </el-upload>
+          </el-form-item>
+        </el-col>
+        <!-- 右：描述 → 结果 → 时间 → 提交（贴右栏底部） -->
+        <el-col :xs="24" :md="12" class="entry-col entry-col--right entry-col--right-wrap">
+          <div class="entry-col--right-body">
+            <el-form-item label="动作执行描述">
+              <el-input v-model="form.action_description" type="textarea" :rows="descRows" />
+            </el-form-item>
+            <el-form-item label="执行结果" required>
+              <el-select v-model="form.result" class="result-select">
+                <el-option v-for="r in EVAL_RECORD_RESULT" :key="r" :label="r" :value="r" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="执行时间">
+              <el-input v-model="durationStr" readonly placeholder="0S（保存或上传后按视频时长、默认 30 帧/秒换算）" />
+            </el-form-item>
           </div>
-          <div v-if="videoDevices.length" class="cam-select-row">
-            <el-select
-              v-model="selectedCameraId"
-              placeholder="选择摄像头"
-              filterable
-              clearable
-              class="cam-select"
-              :disabled="camOn || recording"
-            >
-              <el-option label="系统默认（浏览器自行选择）" value="" />
-              <el-option
-                v-for="d in videoDevices"
-                :key="d.deviceId"
-                :label="d.label"
-                :value="d.deviceId"
-              />
-            </el-select>
-            <el-button link type="primary" :disabled="camOn || recording" @click="refreshVideoDevices">
-              刷新设备列表
-            </el-button>
-          </div>
-          <div v-else-if="canEnumerateVideoDevices" class="cam-select-row">
-            <span class="hint cam-hint-inline">未枚举到摄像头，若已连接可点刷新。</span>
-            <el-button link type="primary" :disabled="camOn || recording" @click="refreshVideoDevices">
-              刷新设备列表
-            </el-button>
-          </div>
-          <p v-if="videoDevices.length" class="hint">
-            多摄像头时在此选择；设备名称在浏览器授权后会更准确。
-          </p>
-          <div class="btns">
-            <el-button v-if="!camOn" type="primary" @click="startCam">开启摄像头</el-button>
-            <template v-else>
-              <el-button type="primary" :disabled="recording" @click="startRec">开始录制</el-button>
-              <el-button type="success" :disabled="!recording" :loading="uploadingRec" @click="stopRecSave">
-                录制保存
-              </el-button>
-              <el-button :disabled="!recording" @click="abortRec">放弃录制</el-button>
-              <el-button v-if="!recording" @click="stopCam">关闭摄像头</el-button>
-            </template>
-          </div>
-          <p class="hint">开启摄像头后可「开始录制」；录制中可「录制保存」上传，或「放弃录制」丢弃本次片段。</p>
-          <p v-if="showCamHttpHint" class="hint hint-warn">
-            通过「局域网 IP + http」访问时，多数浏览器会禁止摄像头/麦克风；请改用本机
-            <strong>localhost</strong> 或 <strong>https</strong>，或直接使用下方「上传 mp4」。
-          </p>
-          <div v-if="uploadedUrl" class="muted">已上传：{{ uploadedUrl }}</div>
-        </div>
-      </el-form-item>
-      <el-form-item label="或上传 mp4">
-        <el-upload :auto-upload="false" :show-file-list="false" accept="video/mp4,video/webm" @change="onUploadFile">
-          <el-button>选择文件上传</el-button>
-        </el-upload>
-      </el-form-item>
-      <el-form-item label="动作执行结果" required>
-        <el-select v-model="form.result" style="width: 200px">
-          <el-option v-for="r in EVAL_RECORD_RESULT" :key="r" :label="r" :value="r" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="动作执行时间">
-        <el-input v-model="durationStr" readonly placeholder="0S（保存或上传后按视频时长、默认 30 帧/秒换算）" />
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" :loading="saving" @click="submitRecord">提交录入</el-button>
-      </el-form-item>
+          <el-form-item class="form-actions form-actions--right-bottom" label-width="0">
+            <el-button type="primary" :loading="saving" @click="submitRecord">提交记录</el-button>
+          </el-form-item>
+        </el-col>
+      </el-row>
     </el-form>
 
     <el-divider>已有记录</el-divider>
@@ -107,13 +131,10 @@
       </el-table-column>
       <el-table-column label="视频" width="220">
         <template #default="{ row }">
-          <video
+          <LazyTableVideo
             v-if="row.video_url"
+            :key="String(row._id)"
             :src="resolveMediaUrl(String(row.video_url))"
-            class="table-video"
-            controls
-            playsinline
-            preload="metadata"
           />
           <span v-else>—</span>
         </template>
@@ -130,7 +151,7 @@
       v-model:page-size="recPageSize"
       :total="recTotal"
       :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
+      :layout="pagerLayout"
       class="table-pager"
     />
 
@@ -172,9 +193,21 @@ import http from "@/api/http";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { EVAL_RECORD_RESULT } from "@/constants/options";
 import { canWriteMaterial } from "@/stores/auth";
+import LazyTableVideo from "@/components/LazyTableVideo.vue";
 import { resolveMediaUrl } from "@/utils/media";
 import { formatDateTime } from "@/utils/datetime";
 import { DEFAULT_PAGE_SIZE, reverseSerialIndex, skipForPage } from "@/utils/pagination";
+
+const FORM_NARROW_MQ = "(max-width: 768px)";
+const mqFormNarrow = typeof window !== "undefined" ? window.matchMedia(FORM_NARROW_MQ) : null;
+const narrowForm = ref(mqFormNarrow?.matches ?? false);
+
+const pagerLayout = computed(() =>
+  narrowForm.value ? "total, prev, pager, next" : "total, sizes, prev, pager, next, jumper"
+);
+
+/** 宽屏双列时左侧描述多给几行，窄屏保持 4 行 */
+const descRows = computed(() => (narrowForm.value ? 4 : 10));
 
 const route = useRoute();
 const taskId = computed(() => String(route.params.taskId));
@@ -443,7 +476,7 @@ function startRec() {
 
 async function stopRecSave() {
   if (!recorder || recorder.state === "inactive" || !recording.value) {
-    ElMessage.warning("请先开始录制");
+    ElMessage.warning("请先开始");
     return;
   }
   discardRecording = false;
@@ -663,10 +696,18 @@ watch(
   { immediate: true }
 );
 
+let unbindFormNarrowMq: (() => void) | undefined;
+
 onMounted(async () => {
+  const onNarrowMq = () => {
+    narrowForm.value = mqFormNarrow!.matches;
+  };
+  mqFormNarrow?.addEventListener("change", onNarrowMq);
+  unbindFormNarrowMq = () => mqFormNarrow?.removeEventListener("change", onNarrowMq);
   await refreshVideoDevices();
 });
 onUnmounted(() => {
+  unbindFormNarrowMq?.();
   stopCam();
 });
 </script>
@@ -676,22 +717,187 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
+
+.header-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--el-text-color-primary);
+}
+
+.task-id {
+  display: inline;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+  font-size: 12px;
+  font-weight: 500;
+  word-break: break-all;
+  color: var(--el-text-color-regular);
+  background: rgba(15, 23, 42, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 .form {
-  max-width: 900px;
+  max-width: min(1280px, 100%);
+  width: 100%;
+  margin-inline: auto;
+  box-sizing: border-box;
 }
+
+/* 两列等高，便于右栏提交按钮贴底 */
+.entry-layout-row {
+  align-items: stretch !important;
+}
+
+/* 整块录入：标签与多行控件顶部对齐，留白统一，避免像「中间画了线」 */
+.entry-record-form:not(.form--narrow)
+  :deep(
+    .entry-col--left > .el-form-item,
+    .entry-col--right-body .el-form-item,
+    .form-actions--right-bottom
+  ) {
+  align-items: flex-start;
+}
+
+.entry-record-form:not(.form--narrow)
+  :deep(
+    .entry-col--left > .el-form-item .el-form-item__label-wrap,
+    .entry-col--right-body .el-form-item .el-form-item__label-wrap
+  ) {
+  align-items: flex-start;
+}
+
+.entry-record-form:not(.form--narrow)
+  :deep(
+    .entry-col--left > .el-form-item .el-form-item__label,
+    .entry-col--right-body .el-form-item .el-form-item__label
+  ) {
+  padding-top: 2px;
+  line-height: 22px;
+  height: auto !important;
+}
+
+.entry-record-form
+  :deep(
+    .entry-col--left > .el-form-item,
+    .entry-col--right-body .el-form-item,
+    .form-actions--right-bottom
+  ) {
+  margin-bottom: 18px;
+  border: none !important;
+  padding: 0;
+}
+
+.entry-record-form :deep(.entry-col--left > .el-form-item:last-of-type) {
+  margin-bottom: 0;
+}
+
+.entry-record-form.form--narrow :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+.entry-col--left,
+.entry-col--right {
+  min-width: 0;
+}
+
+.entry-col--right-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-col--right-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.form-actions--right-bottom {
+  margin-top: auto;
+  padding-top: 0;
+  margin-bottom: 0 !important;
+}
+
+/* 与同表单 label-width 一致：与左侧「或上传 mp4」等内容区左对齐 */
+.form-actions--right-bottom :deep(.el-form-item__content) {
+  justify-content: flex-start;
+  display: flex;
+}
+
+@media (min-width: 992px) {
+  .entry-record-form:not(.form--narrow) .form-actions--right-bottom :deep(.el-form-item__content) {
+    margin-left: 118px;
+  }
+}
+
+.entry-col--left .preview,
+.entry-col--left .placeholder {
+  width: 100%;
+  max-width: 420px;
+}
+
+.entry-col--left .video-wrap {
+  max-width: 420px;
+}
+
+@media (min-width: 992px) {
+  .entry-record-form:not(.form--narrow) .entry-col--right :deep(.el-textarea__inner) {
+    min-height: 200px;
+  }
+  .entry-record-form:not(.form--narrow) .entry-col--right .result-select {
+    width: 100%;
+    max-width: 360px;
+  }
+  .entry-record-form:not(.form--narrow) .entry-col--right :deep(.el-input) {
+    width: 100%;
+    max-width: 360px;
+  }
+  .entry-record-form:not(.form--narrow) .cam-select-row--3 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.result-select {
+  width: min(240px, 100%);
+}
+
+.form--narrow .result-select {
+  width: 100%;
+  max-width: 360px;
+}
+
+.form--narrow.form .form-actions--right-bottom :deep(.el-form-item__content) {
+  margin-left: 0 !important;
+}
+
+.form--narrow.form .form-actions--right-bottom :deep(.el-button) {
+  width: 100%;
+  max-width: 360px;
+}
+
 .rec {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-width: 100%;
 }
 .video-wrap {
   position: relative;
   width: fit-content;
+  max-width: 100%;
 }
 .preview {
-  width: 360px;
-  max-height: 270px;
+  display: block;
+  width: min(420px, 100%);
+  max-width: 100%;
+  max-height: 248px;
   background: #1a1a1a;
   border-radius: 8px;
   object-fit: cover;
@@ -700,10 +906,15 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 200px;
+  box-sizing: border-box;
+  width: min(420px, 100%);
+  max-width: 100%;
+  min-height: 180px;
+  max-height: 248px;
   color: var(--app-text-muted);
   font-size: 14px;
   border: 1px dashed var(--el-border-color);
+  border-radius: 8px;
 }
 .rec-badge {
   position: absolute;
@@ -728,15 +939,28 @@ onUnmounted(() => {
   gap: 10px;
 }
 .cam-select {
-  min-width: 260px;
+  width: min(360px, 100%);
   max-width: 100%;
-  width: 360px;
 }
 .btns {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+/* 开始 / 保存 / 放弃 / 关闭 — 单行不换行，窄屏可横向滑动 */
+.btns-rec {
+  flex-wrap: nowrap;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+.btns-rec :deep(.el-button) {
+  flex: 0 0 auto;
+  margin: 0 !important;
 }
 .hint {
   margin: 0;
@@ -759,14 +983,9 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--app-text-muted);
 }
-.table-video {
-  display: block;
-  width: 200px;
-  max-width: 100%;
-  max-height: 120px;
-  border-radius: 4px;
-  background: #000;
-  object-fit: contain;
-  vertical-align: middle;
+
+.table-pager {
+  flex-wrap: wrap;
+  row-gap: 8px;
 }
 </style>
