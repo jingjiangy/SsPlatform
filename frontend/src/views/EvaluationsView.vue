@@ -140,7 +140,6 @@
         <el-table-column prop="step_name" label="步骤名称" min-width="200" show-overflow-tooltip />
         <el-table-column prop="max_score" label="满分" width="100" align="right" />
         <el-table-column prop="avg_score" label="平均分" width="100" align="right" />
-        <el-table-column prop="sample_count" label="样本数" width="90" align="right" />
       </el-table>
       <p class="muted">评测模板ID：{{ stepAvgTemplateId || "—" }}</p>
       <template #footer>
@@ -175,9 +174,7 @@ const editingId = ref<string | null>(null);
 const stepAvgDlg = ref(false);
 const stepAvgLoading = ref(false);
 const stepAvgTemplateId = ref<string | null>(null);
-const stepAvgItems = ref<
-  { step_id: string; step_name: string; max_score: number; avg_score: number; sample_count: number }[]
->([]);
+const stepAvgItems = ref<{ step_id: string; step_name: string; max_score: number; avg_score: number }[]>([]);
 
 const canWrite = computed(() => canWriteMaterial());
 
