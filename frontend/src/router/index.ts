@@ -36,6 +36,12 @@ const router = createRouter({
           component: () => import("@/views/MaterialsView.vue"),
         },
         {
+          path: "eval-templates",
+          name: "eval-templates",
+          meta: { module: "eval" satisfies AppModule },
+          component: () => import("@/views/EvalTemplatesView.vue"),
+        },
+        {
           path: "materials/:parentId/versions",
           name: "material-versions",
           meta: { module: "materials" satisfies AppModule },

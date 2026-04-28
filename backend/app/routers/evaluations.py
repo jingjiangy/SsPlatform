@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Annotated, Optional
+import uuid
+from typing import Annotated, Any, Optional
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -11,6 +12,11 @@ from app.models.evaluation import (
     EvalRecordCreate,
     EvalRecordOut,
     EvalRecordUpdate,
+    EvalStepIncoming,
+    EvalStepScoreIn,
+    EvalStepTemplateCreate,
+    EvalStepTemplateOut,
+    EvalStepTemplateUpdate,
     EvalTaskCreate,
     EvalTaskOut,
     EvalTaskUpdate,
@@ -26,6 +32,73 @@ from app.services.eval_stats import recalc_task_stats
 from app.services.user_display import actor_label_from_payload, enrich_actor_fields, enrich_one
 
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
+
+STEP_TEMPLATES_COLLECTION = "eval_step_templates"
+
+
+def normalize_task_steps(rows: list[EvalStepIncoming]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        sid = row.id.strip() if row.id else ""
+        if not sid:
+            sid = uuid.uuid4().hex
+        out.append({"id": sid, "name": row.name.strip(), "max_score": float(row.max_score)})
+    return out
+
+
+def validate_step_scores_for_task(
+    task_steps: Optional[list[dict[str, Any]]],
+    incoming: Optional[list[EvalStepScoreIn]],
+) -> tuple[list[dict[str, Any]], float]:
+    ordered: list[dict[str, Any]] = [dict(s) for s in (task_steps or []) if s.get("id")]
+    sid_order = [str(s["id"]) for s in ordered]
+    sid_map = {str(s["id"]): s for s in ordered}
+    if not sid_map:
+        if incoming:
+            raise HTTPException(status_code=400, detail="本评测任务未配置步骤，请勿提交步骤得分")
+        return [], 0.0
+    incoming = incoming or []
+    if len(incoming) != len(sid_map):
+        raise HTTPException(status_code=400, detail="请为本任务的每个评测步骤填写得分")
+    by_sid: dict[str, float] = {}
+    total = 0.0
+    for sc in incoming:
+        sid = str(sc.step_id)
+        if sid not in sid_map:
+            raise HTTPException(status_code=400, detail=f"无效的步骤 id: {sid}")
+        if sid in by_sid:
+            raise HTTPException(status_code=400, detail="步骤得分重复")
+        mx = float(sid_map[sid]["max_score"])
+        sv = float(sc.score)
+        if sv > mx + 1e-9:
+            label = sid_map[sid].get("name") or sid
+            raise HTTPException(status_code=400, detail=f"步骤「{label}」得分不能超过满分 {mx}")
+        by_sid[sid] = sv
+        total += sv
+    if set(by_sid.keys()) != set(sid_map.keys()):
+        raise HTTPException(status_code=400, detail="请为本任务的每个评测步骤填写得分")
+    pairs = [{"step_id": sid, "score": round(by_sid[sid], 4)} for sid in sid_order]
+    return pairs, round(total + 1e-11, 4)
+
+
+def normalize_template_steps(rows: list[dict[str, Any]] | list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seq = 1
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "")).strip()
+        if not name:
+            continue
+        try:
+            score = float(row.get("max_score", 0))
+        except Exception:
+            continue
+        if score <= 0:
+            continue
+        out.append({"step_id": seq, "name": name, "max_score": score})
+        seq += 1
+    return out
 
 
 @router.get("/tasks")
@@ -122,15 +195,39 @@ async def create_task(
 ):
     now = beijing_now()
     mid = None
+    template_oid = None
+    template_doc: Optional[dict[str, Any]] = None
     if body.material_id:
         try:
             mid = ObjectId(body.material_id)
         except InvalidId:
             raise HTTPException(400, "无效素材ID")
+    if body.template_id:
+        try:
+            template_oid = ObjectId(body.template_id)
+        except InvalidId:
+            raise HTTPException(400, "无效模板ID")
+        template_doc = await db[STEP_TEMPLATES_COLLECTION].find_one({"_id": template_oid})
+        if not template_doc:
+            raise HTTPException(404, "评测模板不存在")
     if mid:
         version_str = await compute_next_eval_task_version_for_material(db, mid)
     else:
         version_str = body.version
+    task_steps = normalize_task_steps(body.steps) if body.steps else []
+    if not task_steps and template_doc:
+        template_steps = normalize_template_steps(template_doc.get("steps") or [])
+        task_steps = [
+            {
+                # 任务步骤 id 仍采用字符串，与录入打分逻辑保持一致
+                "id": str(s.get("step_id")),
+                "name": str(s.get("name", "")),
+                "max_score": float(s.get("max_score", 0)),
+            }
+            for s in template_steps
+            if s.get("name")
+        ]
+
     doc = {
         "description": body.description,
         "task_type": body.task_type,
@@ -140,8 +237,13 @@ async def create_task(
         "total_count": 0,
         "success_rate": 0.0,
         "avg_video_seconds": 0.0,
+        "avg_total_score": 0.0,
         "material_id": mid,
         "material_name": body.material_name,
+        "template_id": template_oid,
+        "template_name": str(template_doc.get("name")) if template_doc else None,
+        "template_version": str(template_doc.get("version")) if template_doc else None,
+        "steps": task_steps,
         "created_at": now,
         "updated_at": now,
         "created_by": actor_label_from_payload(user),
@@ -185,7 +287,12 @@ async def update_task(
     if not existing:
         raise HTTPException(404, "评测任务不存在")
     patch: dict = {"updated_at": beijing_now(), "updated_by": actor_label_from_payload(user)}
-    for k, v in body.model_dump(exclude_unset=True).items():
+    raw = body.model_dump(exclude_unset=True)
+    if "steps" in raw:
+        incoming = raw.pop("steps")
+        if incoming is not None:
+            patch["steps"] = normalize_task_steps(incoming)
+    for k, v in raw.items():
         if v is not None:
             if k == "version" and existing.get("material_id"):
                 continue
@@ -246,6 +353,73 @@ async def list_records(
     }
 
 
+@router.get("/tasks/{tid}/step-avg")
+async def get_task_step_avg(
+    tid: str,
+    db: DbDep,
+    _: Annotated[dict, Depends(require_permission(P_EVAL_READ))],
+):
+    try:
+        task_oid = ObjectId(tid)
+    except InvalidId:
+        raise HTTPException(400, "无效任务ID")
+    task = await db["eval_tasks"].find_one({"_id": task_oid})
+    if not task:
+        raise HTTPException(404, "评测任务不存在")
+
+    task_steps = task.get("steps") or []
+    meta_by_id: dict[str, dict[str, Any]] = {}
+    for s in task_steps:
+        if not isinstance(s, dict):
+            continue
+        sid = str(s.get("id") or "")
+        if not sid:
+            continue
+        meta_by_id[sid] = {
+            "step_id": sid,
+            "step_name": str(s.get("name") or ""),
+            "max_score": float(s.get("max_score") or 0),
+        }
+
+    sum_by_id: dict[str, float] = {sid: 0.0 for sid in meta_by_id}
+    cnt_by_id: dict[str, int] = {sid: 0 for sid in meta_by_id}
+
+    async for rec in db["eval_records"].find({"task_id": task_oid}):
+        scores = rec.get("step_scores") or []
+        if not isinstance(scores, list):
+            continue
+        for ss in scores:
+            if not isinstance(ss, dict):
+                continue
+            sid = str(ss.get("step_id") or "")
+            if sid not in sum_by_id:
+                continue
+            try:
+                sc = float(ss.get("score") or 0)
+            except Exception:
+                sc = 0.0
+            sum_by_id[sid] += sc
+            cnt_by_id[sid] += 1
+
+    items: list[dict[str, Any]] = []
+    for sid, meta in meta_by_id.items():
+        c = cnt_by_id.get(sid, 0)
+        avg = (sum_by_id.get(sid, 0.0) / c) if c > 0 else 0.0
+        items.append(
+            {
+                **meta,
+                "avg_score": round(avg + 1e-11, 4),
+                "sample_count": c,
+            }
+        )
+
+    return {
+        "task_id": str(task_oid),
+        "template_id": str(task.get("template_id")) if task.get("template_id") else None,
+        "items": items,
+    }
+
+
 @router.post("/tasks/{tid}/records")
 async def create_record(
     tid: str,
@@ -260,14 +434,22 @@ async def create_record(
     task = await db["eval_tasks"].find_one({"_id": task_oid})
     if not task:
         raise HTTPException(404, "评测任务不存在")
+    task_steps_any = task.get("steps") or []
+    pairs, total_scr = validate_step_scores_for_task(
+        task_steps_any if isinstance(task_steps_any, list) else [],
+        body.step_scores,
+    )
     now = beijing_now()
     doc = {
         "task_id": task_oid,
+        "template_id": task.get("template_id"),
         "action_description": body.action_description,
         "video_url": body.video_url,
         "cover_url": body.cover_url,
         "result": body.result,
         "duration_seconds": body.duration_seconds,
+        "step_scores": pairs,
+        "total_score": total_scr,
         "created_at": now,
         "created_by": actor_label_from_payload(user),
     }
@@ -307,6 +489,20 @@ async def update_record(
     if not doc:
         raise HTTPException(404, "记录不存在")
     patch = body.model_dump(exclude_unset=True, exclude_none=True)
+    if patch.get("step_scores") is not None:
+        task_id = doc["task_id"]
+        task = await db["eval_tasks"].find_one({"_id": task_id})
+        if not task:
+            raise HTTPException(404, "评测任务不存在")
+        raw_ss = patch["step_scores"]
+        parsed_scores = (
+            [EvalStepScoreIn(**cast) for cast in raw_ss]
+            if isinstance(raw_ss, list) and raw_ss is not None
+            else []
+        )
+        pairs, total_scr = validate_step_scores_for_task(task.get("steps") or [], parsed_scores)
+        patch["step_scores"] = pairs
+        patch["total_score"] = total_scr
     if not patch:
         raise HTTPException(400, "无更新内容")
     if "video_url" in patch and patch["video_url"] != doc.get("video_url"):
@@ -344,4 +540,134 @@ async def delete_record(
     delete_local_upload_media_fields(doc)
     await db["eval_records"].delete_one({"_id": oid})
     await recalc_task_stats(db, task_id)
+    return {"ok": True}
+
+
+@router.get("/step-templates")
+async def list_step_templates(
+    db: DbDep,
+    _: Annotated[dict, Depends(require_permission(P_EVAL_READ))],
+    skip: int = 0,
+    limit: int = 100,
+):
+    if limit < 1:
+        limit = 100
+    if limit > 200:
+        limit = 200
+    q: dict[str, Any] = {}
+    total = await db[STEP_TEMPLATES_COLLECTION].count_documents(q)
+    cur = (
+        db[STEP_TEMPLATES_COLLECTION].find(q).sort("_id", -1).skip(skip).limit(limit)
+    )
+    items_raw: list[dict[str, Any]] = []
+    async for doc in cur:
+        items_raw.append(dict(doc))
+    await enrich_actor_fields(db, items_raw, fields=("created_by", "updated_by"))
+    items = []
+    for doc in items_raw:
+        d = dict(doc)
+        d.setdefault("description", "")
+        d.setdefault("status", "进行中")
+        d.setdefault("version", "1.0")
+        d.setdefault("updated_at", d.get("created_at"))
+        d.setdefault("updated_by", d.get("created_by"))
+        d["steps"] = normalize_template_steps(d.get("steps") or [])
+        d["_id"] = str(d["_id"])
+        items.append(EvalStepTemplateOut.model_validate(d).model_dump(by_alias=True))
+    return {"items": items, "total": total}
+
+
+@router.post("/step-templates")
+async def create_step_template(
+    body: EvalStepTemplateCreate,
+    db: DbDep,
+    user: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+):
+    now = beijing_now()
+    normalized_steps = normalize_template_steps(
+        [{"step_id": x.step_id, "name": x.name, "max_score": x.max_score} for x in body.steps]
+    )
+    actor = actor_label_from_payload(user)
+    doc = {
+        "name": body.name.strip(),
+        "description": body.description,
+        "status": body.status,
+        "version": body.version,
+        "steps": normalized_steps,
+        "updated_at": now,
+        "created_at": now,
+        "created_by": actor,
+        "updated_by": actor,
+    }
+    r = await db[STEP_TEMPLATES_COLLECTION].insert_one(doc)
+    doc["_id"] = r.inserted_id
+    await enrich_actor_fields(db, [doc], fields=("created_by", "updated_by"))
+    dd = dict(doc)
+    dd["_id"] = str(dd["_id"])
+    return EvalStepTemplateOut.model_validate(dd).model_dump(by_alias=True)
+
+
+@router.put("/step-templates/{tpid}")
+async def update_step_template(
+    tpid: str,
+    body: EvalStepTemplateUpdate,
+    db: DbDep,
+    user: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+):
+    try:
+        oid = ObjectId(tpid)
+    except InvalidId:
+        raise HTTPException(400, "无效模板 ID")
+    existing = await db[STEP_TEMPLATES_COLLECTION].find_one({"_id": oid})
+    if not existing:
+        raise HTTPException(404, "模板不存在")
+    raw = body.model_dump(exclude_unset=True)
+    patch: dict[str, Any] = {
+        "updated_at": beijing_now(),
+        "updated_by": actor_label_from_payload(user),
+    }
+    if "steps" in raw and raw["steps"] is not None:
+        patch["steps"] = normalize_template_steps(
+            [
+                {
+                    "step_id": x.get("step_id"),
+                    "name": x["name"],
+                    "max_score": x["max_score"],
+                }
+                for x in raw["steps"]
+            ]
+        )
+        raw.pop("steps", None)
+    for k, v in raw.items():
+        if v is not None:
+            patch[k] = v
+    await db[STEP_TEMPLATES_COLLECTION].update_one({"_id": oid}, {"$set": patch})
+    updated = await db[STEP_TEMPLATES_COLLECTION].find_one({"_id": oid})
+    if not updated:
+        raise HTTPException(404, "模板不存在")
+    await enrich_actor_fields(db, [updated], fields=("created_by", "updated_by"))
+    d = dict(updated)
+    d.setdefault("description", "")
+    d.setdefault("status", "进行中")
+    d.setdefault("version", "1.0")
+    d.setdefault("updated_at", d.get("created_at"))
+    d.setdefault("updated_by", d.get("created_by"))
+    d["steps"] = normalize_template_steps(d.get("steps") or [])
+    d["_id"] = str(d["_id"])
+    return EvalStepTemplateOut.model_validate(d).model_dump(by_alias=True)
+
+
+@router.delete("/step-templates/{tpid}")
+async def delete_step_template(
+    tpid: str,
+    db: DbDep,
+    _: Annotated[dict, Depends(require_permission(P_EVAL_WRITE))],
+):
+    try:
+        oid = ObjectId(tpid)
+    except InvalidId:
+        raise HTTPException(400, "无效模板 ID")
+    r = await db[STEP_TEMPLATES_COLLECTION].delete_one({"_id": oid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "模板不存在")
     return {"ok": True}

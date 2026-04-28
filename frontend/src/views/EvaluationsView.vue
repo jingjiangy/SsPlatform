@@ -41,6 +41,15 @@
       <el-table-column prop="avg_video_seconds" label="平均视频时长" width="120">
         <template #default="{ row }">{{ row.avg_video_seconds }}S</template>
       </el-table-column>
+      <el-table-column prop="template_id" label="评测模板ID" width="220" show-overflow-tooltip />
+      <el-table-column prop="avg_total_score" label="评测步骤总分数" width="120" align="right">
+        <template #default="{ row }">{{ row.avg_total_score ?? 0 }}</template>
+      </el-table-column>
+      <el-table-column label="评测步骤平均分详情" width="140" align="center">
+        <template #default="{ row }">
+          <el-button link type="primary" :disabled="!hasStepConfig(row)" @click="openStepAvgDialog(row)">查看</el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="创建时间" width="180">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
@@ -68,7 +77,7 @@
       class="table-pager"
     />
 
-    <el-dialog v-model="dlg" :title="dlgTitle" width="640px">
+    <el-dialog v-model="dlg" :title="dlgTitle" width="720px" class="eval-task-dlg" @open="onDlgOpen">
       <el-form :model="form" label-width="120px">
         <el-form-item label="描述">
           <el-input v-model="form.description" type="textarea" :rows="4" />
@@ -95,10 +104,47 @@
         <el-form-item label="素材名称">
           <el-input v-model="form.material_name" placeholder="可选" />
         </el-form-item>
+
+        <el-divider content-position="left">评测步骤（录入打分）</el-divider>
+        <div class="step-actions-bar">
+          <el-select v-model="selectedTplId" placeholder="载入步骤模板" filterable clearable style="width: 260px">
+            <el-option v-for="t in stepTemplates" :key="String(t._id)" :label="t.name" :value="String(t._id)" />
+          </el-select>
+          <el-button type="primary" plain :disabled="!selectedTplId" @click="applyStepTemplate">载入</el-button>
+          <el-button type="success" plain @click="saveStepsAsTemplate">保存为模板</el-button>
+          <el-button plain @click="pushStepRow">添加步骤</el-button>
+        </div>
+        <div class="steps-edit-table">
+          <div class="steps-edit-head">
+            <span class="col-name">步骤名称</span>
+            <span class="col-score">满分</span>
+            <span class="col-act" />
+          </div>
+          <div v-for="(s, idx) in form.steps" :key="idx" class="steps-edit-row">
+            <el-input v-model="s.name" placeholder="步骤名称" maxlength="256" show-word-limit />
+            <el-input-number v-model="s.max_score" :min="0.01" :max="1000000" :precision="2" controls-position="right" />
+            <el-button link type="danger" @click="removeStepRow(idx)">删除</el-button>
+          </div>
+          <p v-if="!form.steps.length" class="muted step-empty">未配置步骤时，录入页不显示「步骤打分」列。</p>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="dlg = false">取消</el-button>
         <el-button type="primary" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="stepAvgDlg" title="评测步骤平均分详情" width="700px">
+      <el-table v-loading="stepAvgLoading" :data="stepAvgItems" border stripe>
+        <el-table-column prop="step_id" label="步骤ID" width="120" />
+        <el-table-column prop="step_name" label="步骤名称" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="max_score" label="满分" width="100" align="right" />
+        <el-table-column prop="avg_score" label="平均分" width="100" align="right" />
+        <el-table-column prop="sample_count" label="样本数" width="90" align="right" />
+      </el-table>
+      <p class="muted">评测模板ID：{{ stepAvgTemplateId || "—" }}</p>
+      <template #footer>
+        <el-button @click="stepAvgDlg = false">关闭</el-button>
       </template>
     </el-dialog>
   </el-card>
@@ -126,8 +172,16 @@ function revIdx($index: number) {
 }
 const dlg = ref(false);
 const editingId = ref<string | null>(null);
+const stepAvgDlg = ref(false);
+const stepAvgLoading = ref(false);
+const stepAvgTemplateId = ref<string | null>(null);
+const stepAvgItems = ref<
+  { step_id: string; step_name: string; max_score: number; avg_score: number; sample_count: number }[]
+>([]);
 
 const canWrite = computed(() => canWriteMaterial());
+
+type EvalStepFormRow = { id?: string; name: string; max_score: number };
 
 const form = reactive({
   description: "",
@@ -136,7 +190,11 @@ const form = reactive({
   version: "1.0",
   material_id: "",
   material_name: "",
+  steps: [] as EvalStepFormRow[],
 });
+
+const stepTemplates = ref<{ _id: string; name: string; steps: { name: string; max_score: number }[] }[]>([]);
+const selectedTplId = ref<string>("");
 
 const dlgTitle = "修改评测任务";
 
@@ -164,6 +222,25 @@ function failCount(row: Record<string, unknown>) {
   return Math.max(0, total - ok);
 }
 
+function hasStepConfig(row: Record<string, unknown>) {
+  const steps = row.steps;
+  return Array.isArray(steps) && steps.length > 0;
+}
+
+async function openStepAvgDialog(row: Record<string, unknown>) {
+  const tid = String(row._id || "");
+  if (!tid) return;
+  stepAvgLoading.value = true;
+  try {
+    const { data } = await http.get(`/api/evaluations/tasks/${tid}/step-avg`);
+    stepAvgItems.value = ((data as { items?: unknown[] }).items || []) as typeof stepAvgItems.value;
+    stepAvgTemplateId.value = (data as { template_id?: string | null }).template_id || null;
+    stepAvgDlg.value = true;
+  } finally {
+    stepAvgLoading.value = false;
+  }
+}
+
 function goToMaterial(row: Record<string, unknown>) {
   if (!row.material_id) return;
   const mid = String(row.material_id);
@@ -177,6 +254,70 @@ function goToMaterial(row: Record<string, unknown>) {
   router.push({ name: "materials", query: { expandMaterial: mid } });
 }
 
+async function loadStepTemplates() {
+  const { data } = await http.get("/api/evaluations/step-templates", { params: { limit: 100 } });
+  stepTemplates.value = (data.items || []) as typeof stepTemplates.value;
+}
+
+function onDlgOpen() {
+  void loadStepTemplates();
+}
+
+function pushStepRow() {
+  form.steps.push({ name: "", max_score: 10 });
+}
+
+function removeStepRow(idx: number) {
+  form.steps.splice(idx, 1);
+}
+
+function applyStepTemplate() {
+  const id = selectedTplId.value;
+  if (!id) return;
+  const t = stepTemplates.value.find((x) => String(x._id) === id);
+  if (!t || !t.steps?.length) {
+    ElMessage.warning("该模板无步骤");
+    return;
+  }
+  form.steps.length = 0;
+  for (const s of t.steps) {
+    form.steps.push({
+      name: String(s.name ?? ""),
+      max_score: Number(s.max_score) > 0 ? Number(s.max_score) : 10,
+    });
+  }
+  ElMessage.success("已从模板载入步骤");
+}
+
+async function saveStepsAsTemplate() {
+  const trimmed = form.steps
+    .map((s) => ({
+      name: String(s.name ?? "").trim(),
+      max_score: Number(s.max_score),
+    }))
+    .filter((s) => s.name && s.max_score > 0);
+  if (!trimmed.length) {
+    ElMessage.warning("请先添加有效步骤（名称 + 满分）");
+    return;
+  }
+  let name = "";
+  try {
+    const ret = await ElMessageBox.prompt("模板名称", "保存为步骤模板", {
+      confirmButtonText: "保存",
+      cancelButtonText: "取消",
+      inputPattern: /\S+/,
+      inputErrorMessage: "请输入名称",
+    });
+    name = String((ret as { value?: string }).value || "").trim();
+  } catch {
+    return;
+  }
+  if (!name) return;
+  await http.post("/api/evaluations/step-templates", { name, steps: trimmed });
+  ElMessage.success("已保存模板");
+  await loadStepTemplates();
+}
+
 function openEdit(row: Record<string, unknown>) {
   editingId.value = String(row._id);
   form.description = String(row.description || "");
@@ -185,16 +326,40 @@ function openEdit(row: Record<string, unknown>) {
   form.version = String(row.version);
   form.material_id = row.material_id ? String(row.material_id) : "";
   form.material_name = String(row.material_name || "");
+  const raw = row.steps as unknown;
+  if (Array.isArray(raw) && raw.length) {
+    form.steps.length = 0;
+    for (const x of raw) {
+      const o = x as { id?: string; name?: unknown; max_score?: unknown };
+      form.steps.push({
+        id: o.id ? String(o.id) : undefined,
+        name: String(o.name ?? ""),
+        max_score: Number(o.max_score) > 0 ? Number(o.max_score) : 10,
+      });
+    }
+  } else {
+    form.steps.length = 0;
+  }
+  selectedTplId.value = "";
   dlg.value = true;
 }
 
 async function save() {
   if (!editingId.value) return;
+  const stepsPayload = form.steps
+    .map((s) => ({
+      ...(s.id ? { id: String(s.id) } : {}),
+      name: String(s.name ?? "").trim(),
+      max_score: Number(s.max_score),
+    }))
+    .filter((s) => s.name && s.max_score > 0);
+
   const body: Record<string, unknown> = {
     description: form.description,
     task_type: form.task_type,
     status: form.status,
     material_name: form.material_name || undefined,
+    steps: stepsPayload,
   };
   if (!form.material_id) {
     body.version = form.version;
@@ -232,6 +397,44 @@ watch(
 }
 .muted {
   color: var(--app-text-muted);
+  font-size: 13px;
+}
+
+.step-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.steps-edit-table {
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  padding: 8px 12px 12px;
+  background: var(--el-fill-color-blank);
+}
+
+.steps-edit-head {
+  display: grid;
+  grid-template-columns: 1fr 140px 72px;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.steps-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 140px 72px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.step-empty {
+  margin: 8px 4px 0;
   font-size: 13px;
 }
 </style>

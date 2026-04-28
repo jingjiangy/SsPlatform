@@ -56,6 +56,17 @@
         <el-form-item label="评测记录描述" required>
           <el-input v-model="addDescription" type="textarea" :rows="4" placeholder="请输入评测任务描述" />
         </el-form-item>
+        <el-form-item label="关联评测模板">
+          <el-select
+            v-model="selectedTemplateId"
+            clearable
+            filterable
+            placeholder="可选，选择后自动带入模板步骤"
+            style="width: 100%"
+          >
+            <el-option v-for="tpl in stepTemplates" :key="String(tpl._id)" :label="tpl.name" :value="String(tpl._id)" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="addDlg = false">取消</el-button>
@@ -116,6 +127,8 @@ function revIdx($index: number) {
 const canWrite = computed(() => canWriteMaterial());
 const addDlg = ref(false);
 const addDescription = ref("");
+const stepTemplates = ref<{ _id: string; name: string }[]>([]);
+const selectedTemplateId = ref("");
 const dlg = ref(false);
 const editingId = ref<string | null>(null);
 const form = reactive({
@@ -176,7 +189,17 @@ async function save() {
 function openCreateDialog() {
   if (!materialId.value) return;
   addDescription.value = materialName.value ? `关联素材 ${materialName.value}` : "";
+  selectedTemplateId.value = "";
+  void loadTemplates();
   addDlg.value = true;
+}
+
+async function loadTemplates() {
+  const { data } = await http.get("/api/evaluations/step-templates", { params: { limit: 200 } });
+  stepTemplates.value = ((data.items || []) as { _id: string; name: string }[]).map((x) => ({
+    _id: String(x._id),
+    name: String(x.name || ""),
+  }));
 }
 
 function taskVersionCell(row: Record<string, unknown>) {
@@ -198,6 +221,7 @@ async function submitCreate() {
     status: EVAL_TASK_STATUS[2],
     material_id: materialId.value,
     material_name: materialName.value,
+    template_id: selectedTemplateId.value || undefined,
   });
   addDlg.value = false;
   const ver = data.version != null && data.version !== "" ? String(data.version) : "";

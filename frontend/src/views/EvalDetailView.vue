@@ -17,7 +17,7 @@
     >
       <el-row :gutter="narrowForm ? 0 : 20" class="entry-layout-row">
         <!-- 左：视频预览 → 选摄像头 → 录制操作 → 上传 -->
-        <el-col :xs="24" :md="12" class="entry-col entry-col--left">
+        <el-col :xs="24" :md="leftColSpan" class="entry-col entry-col--left">
           <el-form-item label="动作视频录制">
             <div class="rec">
               <div class="video-wrap">
@@ -95,8 +95,8 @@
             </el-upload>
           </el-form-item>
         </el-col>
-        <!-- 右：描述 → 结果 → 时间 → 提交（贴右栏底部） -->
-        <el-col :xs="24" :md="12" class="entry-col entry-col--right entry-col--right-wrap">
+        <!-- 中：描述 → 结果 → 时间 → 提交（贴右栏底部） -->
+        <el-col :xs="24" :md="midColSpan" class="entry-col entry-col--right entry-col--right-wrap">
           <div class="entry-col--right-body">
             <el-form-item label="动作执行描述">
               <el-input v-model="form.action_description" type="textarea" :rows="descRows" />
@@ -114,6 +114,35 @@
             <el-button type="primary" :loading="saving" @click="submitRecord">提交记录</el-button>
           </el-form-item>
         </el-col>
+        <!-- 右：步骤打分（评测任务配置） -->
+        <el-col v-if="hasTaskSteps" :xs="24" :md="stepColSpan" class="entry-col entry-col--steps">
+          <div class="steps-panel">
+            <div class="steps-panel-title">评测步骤 · 打分</div>
+            <div class="steps-panel-hint muted">单项不超过满分，提交时自动汇总总分</div>
+            <div v-for="(st, idx) in taskSteps" :key="st.id" class="step-score-row">
+              <div class="step-score-label">
+                <span class="step-index">第{{ idx + 1 }}步</span>
+                <span class="step-name">{{ st.name }}</span>
+                <span class="step-max">满分 {{ st.max_score }}</span>
+              </div>
+              <div class="step-score-actions">
+                <el-input-number
+                  v-model="stepScoreMap[st.id]"
+                  :min="0"
+                  :max="st.max_score"
+                  :precision="2"
+                  controls-position="right"
+                  class="step-score-input"
+                />
+                <el-button size="small" type="success" plain @click="markStepSuccess(st.id, st.max_score)">Success</el-button>
+                <el-button size="small" type="danger" plain @click="markStepFail(st.id)">Fail</el-button>
+              </div>
+            </div>
+            <div class="steps-panel-total">
+              总分：<strong>{{ stepTotalDisplay }}</strong>
+            </div>
+          </div>
+        </el-col>
       </el-row>
     </el-form>
 
@@ -126,6 +155,16 @@
       <el-table-column prop="action_description" label="动作描述" />
       <el-table-column prop="result" label="结果" width="90" />
       <el-table-column prop="duration_seconds" label="时长(S)" width="100" />
+      <el-table-column label="步骤总分" width="100" align="right">
+        <template #default="{ row }">
+          {{ formatRecordTotal(row) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="步骤详情" width="100" align="center">
+        <template #default="{ row }">
+          <el-button link type="primary" :disabled="!hasRowStepDetail(row)" @click="openRecordStepDetail(row)">查看</el-button>
+        </template>
+      </el-table-column>
       <el-table-column prop="created_at" label="创建时间" width="180">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
@@ -171,6 +210,24 @@
         <el-form-item label="时长(S)">
           <el-input-number v-model="editForm.duration_seconds" :min="0" :step="1" />
         </el-form-item>
+        <template v-if="hasTaskSteps">
+          <el-divider>评测步骤得分</el-divider>
+          <div v-for="(st, idx) in taskSteps" :key="'edit-' + st.id" class="step-score-row-edit">
+            <span class="step-index">第{{ idx + 1 }}步</span>
+            <span class="step-name">{{ st.name }}</span>
+            <span class="muted">满分 {{ st.max_score }}</span>
+            <el-input-number
+              v-model="editStepScoreMap[st.id]"
+              :min="0"
+              :max="st.max_score"
+              :precision="2"
+              controls-position="right"
+              style="width: 160px"
+            />
+            <el-button size="small" type="success" plain @click="markEditStepSuccess(st.id, st.max_score)">Success</el-button>
+            <el-button size="small" type="danger" plain @click="markEditStepFail(st.id)">Fail</el-button>
+          </div>
+        </template>
         <el-form-item label="重传视频">
           <el-upload :auto-upload="false" :show-file-list="false" accept="video/mp4,video/webm" @change="onEditUploadFile">
             <el-button>选择 mp4/webm</el-button>
@@ -183,11 +240,25 @@
         <el-button type="primary" :loading="editSaving" @click="saveEditRecord">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="recordStepDlg" title="步骤详情" width="680px">
+      <el-table :data="recordStepItems" border stripe>
+        <el-table-column prop="step_index" label="第几步" width="90" align="center" />
+        <el-table-column prop="step_id" label="步骤ID" width="120" />
+        <el-table-column prop="step_name" label="步骤名称" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="max_score" label="满分" width="90" align="right" />
+        <el-table-column prop="score" label="得分" width="90" align="right" />
+      </el-table>
+      <template #footer>
+        <el-button @click="recordStepDlg = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import http from "@/api/http";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -211,6 +282,125 @@ const descRows = computed(() => (narrowForm.value ? 4 : 10));
 
 const route = useRoute();
 const taskId = computed(() => String(route.params.taskId));
+
+const taskDetail = ref<Record<string, unknown> | null>(null);
+const stepScoreMap = reactive<Record<string, number>>({});
+const editStepScoreMap = reactive<Record<string, number>>({});
+
+const taskSteps = computed(() => {
+  const raw = taskDetail.value?.steps;
+  if (!Array.isArray(raw)) return [];
+  return raw as { id: string; name: string; max_score: number }[];
+});
+const hasTaskSteps = computed(() => taskSteps.value.length > 0);
+
+const leftColSpan = computed(() => {
+  if (narrowForm.value) return 24;
+  return hasTaskSteps.value ? 8 : 12;
+});
+const midColSpan = computed(() => {
+  if (narrowForm.value) return 24;
+  return hasTaskSteps.value ? 8 : 12;
+});
+const stepColSpan = computed(() => {
+  if (narrowForm.value) return 24;
+  return hasTaskSteps.value ? 8 : 24;
+});
+
+const stepTotalDisplay = computed(() => {
+  let t = 0;
+  for (const st of taskSteps.value) {
+    t += Number(stepScoreMap[st.id] ?? 0);
+  }
+  if (!Number.isFinite(t)) return 0;
+  return Math.round(t * 10000) / 10000;
+});
+
+function formatRecordTotal(row: Record<string, unknown>) {
+  const v = row.total_score;
+  if (v === undefined || v === null) return "—";
+  return String(v);
+}
+
+const recordStepDlg = ref(false);
+const recordStepItems = ref<
+  { step_index: number; step_id: string; step_name: string; max_score: number; score: number }[]
+>([]);
+
+function hasRowStepDetail(row: Record<string, unknown>) {
+  const raw = row.step_scores;
+  return Array.isArray(raw) && raw.length > 0;
+}
+
+function openRecordStepDetail(row: Record<string, unknown>) {
+  const raw = (row.step_scores as { step_id?: unknown; score?: unknown }[] | undefined) || [];
+  const byId = new Map<string, number>();
+  for (const s of raw) {
+    const sid = String(s?.step_id ?? "");
+    if (!sid) continue;
+    byId.set(sid, Number(s?.score ?? 0));
+  }
+
+  const steps = taskSteps.value;
+  const built: typeof recordStepItems.value = [];
+  if (steps.length > 0) {
+    for (let i = 0; i < steps.length; i += 1) {
+      const st = steps[i];
+      built.push({
+        step_index: i + 1,
+        step_id: st.id,
+        step_name: st.name,
+        max_score: Number(st.max_score) || 0,
+        score: Number(byId.get(st.id) ?? 0),
+      });
+    }
+  } else {
+    let idx = 1;
+    for (const s of raw) {
+      built.push({
+        step_index: idx,
+        step_id: String(s?.step_id ?? ""),
+        step_name: String(s?.step_id ?? ""),
+        max_score: 0,
+        score: Number(s?.score ?? 0),
+      });
+      idx += 1;
+    }
+  }
+  recordStepItems.value = built;
+  recordStepDlg.value = true;
+}
+
+function markStepSuccess(stepId: string, maxScore: number) {
+  stepScoreMap[stepId] = Number(maxScore) || 0;
+}
+
+function markStepFail(stepId: string) {
+  stepScoreMap[stepId] = 0;
+}
+
+function markEditStepSuccess(stepId: string, maxScore: number) {
+  editStepScoreMap[stepId] = Number(maxScore) || 0;
+}
+
+function markEditStepFail(stepId: string) {
+  editStepScoreMap[stepId] = 0;
+}
+
+async function loadTaskDetail() {
+  try {
+    const { data } = await http.get(`/api/evaluations/tasks/${taskId.value}`);
+    taskDetail.value = data as Record<string, unknown>;
+    for (const k of Object.keys(stepScoreMap)) {
+      delete stepScoreMap[k];
+    }
+    for (const st of taskSteps.value) {
+      stepScoreMap[st.id] = 0;
+    }
+  } catch {
+    taskDetail.value = null;
+  }
+}
 
 const form = ref({
   action_description: "",
@@ -595,17 +785,27 @@ async function onUploadFile(uploadFile: { raw?: File }) {
 async function submitRecord() {
   saving.value = true;
   try {
-    await http.post(`/api/evaluations/tasks/${taskId.value}/records`, {
+    const body: Record<string, unknown> = {
       action_description: form.value.action_description,
       video_url: uploadedUrl.value,
       cover_url: uploadedCover.value,
       result: form.value.result,
       duration_seconds: durationSeconds.value,
-    });
+    };
+    if (hasTaskSteps.value) {
+      body.step_scores = taskSteps.value.map((st) => ({
+        step_id: st.id,
+        score: Number(stepScoreMap[st.id] ?? 0),
+      }));
+    }
+    await http.post(`/api/evaluations/tasks/${taskId.value}/records`, body);
     ElMessage.success("已提交");
     form.value.action_description = "";
     uploadedUrl.value = null;
     durationSeconds.value = 0;
+    for (const st of taskSteps.value) {
+      stepScoreMap[st.id] = 0;
+    }
     await loadRecords();
   } finally {
     saving.value = false;
@@ -623,6 +823,14 @@ function openEditRecord(row: Record<string, unknown>) {
     duration_seconds: Math.max(0, Math.floor(Number(row.duration_seconds) || 0)),
     video_url: row.video_url != null && String(row.video_url) ? String(row.video_url) : null,
   };
+  for (const k of Object.keys(editStepScoreMap)) {
+    delete editStepScoreMap[k];
+  }
+  const rowScores = row.step_scores as { step_id?: string; score?: number }[] | undefined;
+  for (const st of taskSteps.value) {
+    const found = Array.isArray(rowScores) ? rowScores.find((x) => x?.step_id === st.id) : undefined;
+    editStepScoreMap[st.id] = found != null ? Number(found.score) : 0;
+  }
   editVideoTouched.value = false;
   editDlg.value = true;
 }
@@ -655,6 +863,7 @@ async function saveEditRecord() {
       result: string;
       duration_seconds: number;
       video_url?: string;
+      step_scores?: { step_id: string; score: number }[];
     } = {
       action_description: editForm.value.action_description,
       result: editForm.value.result,
@@ -662,6 +871,12 @@ async function saveEditRecord() {
     };
     if (editVideoTouched.value && editForm.value.video_url) {
       body.video_url = editForm.value.video_url;
+    }
+    if (hasTaskSteps.value) {
+      body.step_scores = taskSteps.value.map((st) => ({
+        step_id: st.id,
+        score: Number(editStepScoreMap[st.id] ?? 0),
+      }));
     }
     await http.put(`/api/evaluations/records/${editId.value}`, body);
     ElMessage.success("已保存");
@@ -683,7 +898,9 @@ watch(
   () => taskId.value,
   () => {
     recPage.value = 1;
-  }
+    void loadTaskDetail();
+  },
+  { immediate: true }
 );
 watch(recPageSize, () => {
   recPage.value = 1;
@@ -880,6 +1097,90 @@ onUnmounted(() => {
 .form--narrow.form .form-actions--right-bottom :deep(.el-button) {
   width: 100%;
   max-width: 360px;
+}
+
+.entry-col--steps {
+  min-width: 0;
+}
+
+.steps-panel {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+}
+
+.steps-panel-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
+  margin-bottom: 4px;
+}
+
+.steps-panel-hint {
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.step-score-row {
+  margin-bottom: 14px;
+}
+
+.step-score-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.step-score-label .step-index {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.step-score-label .step-name {
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+}
+
+.step-score-label .step-max {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.step-score-input {
+  width: 100%;
+  max-width: 200px;
+}
+
+.step-score-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.steps-panel-total {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(15, 23, 42, 0.1);
+  font-size: 15px;
+}
+
+.step-score-row-edit {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.step-score-row-edit .step-index {
+  font-size: 12px;
+  color: var(--el-color-primary);
+  font-weight: 600;
 }
 
 .rec {
