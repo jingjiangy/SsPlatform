@@ -146,7 +146,7 @@
           :loading="stepAvgTranslating"
           @click="toggleStepAvgEnglish"
         >
-          {{ stepAvgEnglishMode ? "To 中文" : "To English" }}
+          {{ stepAvgEnglishMode ? "Chinese" : "To English" }}
         </el-button>
       </div>
       <el-table v-loading="stepAvgLoading" :data="stepAvgItems" border stripe>
