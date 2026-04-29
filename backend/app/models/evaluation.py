@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.common import validate_version
 
 _EVAL_TEMPLATE_STATUSES = frozenset({"启用", "停用"})
+EVAL_RECORD_STATUSES: tuple[str, ...] = ("有效", "剔除")
 
 
 def normalize_eval_step_template_status(st: object) -> str:
@@ -209,6 +210,7 @@ class EvalRecordUpdate(BaseModel):
     video_url: Optional[str] = None
     cover_url: Optional[str] = None
     step_scores: Optional[list[EvalStepScoreIn]] = None
+    status: Optional[Literal["有效", "剔除"]] = None
 
 
 class EvalRecordOut(BaseModel):
@@ -220,6 +222,7 @@ class EvalRecordOut(BaseModel):
     cover_url: Optional[str] = None
     result: str
     duration_seconds: int
+    status: Literal["有效", "剔除"] = "有效"
     step_scores: list[dict[str, Any]] = Field(default_factory=list)
     total_score: float = 0.0
     created_at: datetime
@@ -237,4 +240,6 @@ class EvalRecordOut(BaseModel):
             d["template_id"] = str(d["template_id"])
         d.setdefault("step_scores", d.get("step_scores") or [])
         d.setdefault("total_score", float(d.get("total_score") or 0))
+        st = d.get("status")
+        d["status"] = st if st in EVAL_RECORD_STATUSES else "有效"
         return cls.model_validate(d)

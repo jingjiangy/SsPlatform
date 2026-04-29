@@ -2,7 +2,7 @@
   <el-card>
     <template #header>
       <div class="row">
-        <span>评测记录 / 评测任务</span>
+        <span>评测任务</span>
       </div>
     </template>
     <el-table :data="items" border stripe row-key="_id">
@@ -42,10 +42,10 @@
         <template #default="{ row }">{{ row.avg_video_seconds }}S</template>
       </el-table-column>
       <el-table-column prop="template_id" label="评测模板ID" width="220" show-overflow-tooltip />
-      <el-table-column prop="avg_total_score" label="评测步骤总分数" width="120" align="right">
+      <el-table-column prop="avg_total_score" label="步骤总分" width="120" align="right">
         <template #default="{ row }">{{ row.avg_total_score ?? 0 }}</template>
       </el-table-column>
-      <el-table-column label="评测步骤平均分详情" width="140" align="center">
+      <el-table-column label="步骤分详情" width="140" align="center">
         <template #default="{ row }">
           <el-button link type="primary" :disabled="!hasStepConfig(row)" @click="openStepAvgDialog(row)">查看</el-button>
         </template>

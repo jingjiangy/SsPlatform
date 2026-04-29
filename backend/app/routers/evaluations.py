@@ -39,7 +39,7 @@ from app.services.upload import (
     delete_local_upload_media_fields,
     save_video_file,
 )
-from app.services.eval_stats import recalc_task_stats
+from app.services.eval_stats import eval_record_included_in_task_stats, recalc_task_stats
 from app.services.user_display import actor_label_from_payload, enrich_actor_fields, enrich_one
 
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
@@ -372,6 +372,7 @@ async def get_task_step_avg(
     db: DbDep,
     _: Annotated[dict, Depends(require_permission(P_EVAL_READ))],
 ):
+    """各步骤 avg_score、sample_count 仅统计非「剔除」的评测记录（与 recalc_task_stats 一致）。"""
     try:
         task_oid = ObjectId(tid)
     except InvalidId:
@@ -398,6 +399,8 @@ async def get_task_step_avg(
     cnt_by_id: dict[str, int] = {sid: 0 for sid in meta_by_id}
 
     async for rec in db["eval_records"].find({"task_id": task_oid}):
+        if not eval_record_included_in_task_stats(rec):
+            continue
         scores = rec.get("step_scores") or []
         if not isinstance(scores, list):
             continue
@@ -501,6 +504,7 @@ async def create_record(
         "cover_url": body.cover_url,
         "result": body.result,
         "duration_seconds": body.duration_seconds,
+        "status": "有效",
         "step_scores": pairs,
         "total_score": total_scr,
         "created_at": now,
@@ -537,10 +541,10 @@ async def update_record(
     try:
         oid = ObjectId(rid)
     except InvalidId:
-        raise HTTPException(400, "无效记录ID")
+        raise HTTPException(400, "无效评测记录ID")
     doc = await db["eval_records"].find_one({"_id": oid})
     if not doc:
-        raise HTTPException(404, "记录不存在")
+        raise HTTPException(404, "评测记录不存在")
     patch = body.model_dump(exclude_unset=True, exclude_none=True)
     if patch.get("step_scores") is not None:
         task_id = doc["task_id"]
@@ -566,12 +570,12 @@ async def update_record(
             delete_local_upload_file(doc.get("cover_url"))
     r = await db["eval_records"].update_one({"_id": oid}, {"$set": patch})
     if r.matched_count == 0:
-        raise HTTPException(404, "记录不存在")
+        raise HTTPException(404, "评测记录不存在")
     task_id = doc["task_id"]
     await recalc_task_stats(db, task_id)
     updated = await db["eval_records"].find_one({"_id": oid})
     if not updated:
-        raise HTTPException(404, "记录不存在")
+        raise HTTPException(404, "评测记录不存在")
     await enrich_actor_fields(db, [updated], fields=("created_by",))
     return EvalRecordOut.from_doc(updated).model_dump(by_alias=True)
 
@@ -585,10 +589,10 @@ async def delete_record(
     try:
         oid = ObjectId(rid)
     except InvalidId:
-        raise HTTPException(400, "无效记录ID")
+        raise HTTPException(400, "无效评测记录ID")
     doc = await db["eval_records"].find_one({"_id": oid})
     if not doc:
-        raise HTTPException(404, "记录不存在")
+        raise HTTPException(404, "评测记录不存在")
     task_id = doc["task_id"]
     delete_local_upload_media_fields(doc)
     await db["eval_records"].delete_one({"_id": oid})

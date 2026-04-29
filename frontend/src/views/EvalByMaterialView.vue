@@ -12,7 +12,7 @@
         <el-button v-if="canWrite" type="primary" @click="openCreateDialog">创建关联评测任务</el-button>
       </div>
     </template>
-    <p v-if="!pagedList.length" class="empty">评测记录为空</p>
+    <p v-if="!pagedList.length" class="empty">评测任务为空</p>
     <el-table v-else :data="pagedList" border stripe row-key="_id">
       <el-table-column label="序号" width="72" align="center">
         <template #default="{ $index }">{{ revIdx($index) }}</template>
@@ -53,7 +53,7 @@
 
     <el-dialog v-model="addDlg" title="创建关联评测任务" width="560px">
       <el-form label-width="120px">
-        <el-form-item label="评测记录描述" required>
+        <el-form-item label="评测任务描述" required>
           <el-input v-model="addDescription" type="textarea" :rows="4" placeholder="请输入评测任务描述" />
         </el-form-item>
         <el-form-item label="关联评测模板">
@@ -212,7 +212,7 @@ async function submitCreate() {
   if (!materialId.value) return;
   const desc = addDescription.value.trim();
   if (!desc) {
-    ElMessage.warning("请填写评测记录描述");
+    ElMessage.warning("请填写评测任务描述");
     return;
   }
   const { data } = await http.post<{ version?: string }>("/api/evaluations/tasks", {

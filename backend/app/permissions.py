@@ -83,7 +83,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P_FAULT_RECORD_READ,
         P_FAULT_RECORD_WRITE,
     },
-    # 评测员：素材库、评测记录、账号管理（读写账号按需求给读写）
+    # 评测员：素材库、评测任务、账号管理（读写账号按需求给读写）
     RoleCode.EVALUATOR.value: {
         P_USER_READ,
         P_USER_WRITE,
@@ -97,7 +97,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         P_PART_READ,
         P_FAULT_RECORD_READ,
     },
-    # 研发：素材库、评测记录、可操作
+    # 研发：素材库、评测任务、可操作
     RoleCode.RD.value: {
         P_MATERIAL_READ,
         P_MATERIAL_WRITE,

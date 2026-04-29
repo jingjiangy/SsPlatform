@@ -7,7 +7,7 @@
       </div>
     </template>
 
-    <el-divider>录入新记录</el-divider>
+    <el-divider>录入评测记录</el-divider>
     <el-form
       :model="form"
       class="form entry-record-form"
@@ -111,7 +111,7 @@
             </el-form-item>
           </div>
           <el-form-item class="form-actions form-actions--right-bottom" label-width="0">
-            <el-button type="primary" :loading="saving" @click="submitRecord">提交记录</el-button>
+            <el-button type="primary" :loading="saving" @click="submitRecord">提交评测记录</el-button>
           </el-form-item>
         </el-col>
         <!-- 右：步骤打分（评测任务配置） -->
@@ -147,14 +147,20 @@
       </el-row>
     </el-form>
 
-    <el-divider>已有记录</el-divider>
+    <el-divider>评测记录</el-divider>
     <el-table :data="records" row-key="_id" border stripe>
       <el-table-column label="序号" width="72" align="center">
         <template #default="{ $index }">{{ revIdx($index) }}</template>
       </el-table-column>
-      <el-table-column prop="_id" label="记录ID" width="200" show-overflow-tooltip />
+      <el-table-column prop="_id" label="评测记录ID" width="200" show-overflow-tooltip />
       <el-table-column prop="action_description" label="动作描述" />
       <el-table-column prop="result" label="结果" width="90" />
+      <el-table-column label="状态" width="100" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="recordStatusOf(row) === '剔除'" type="info" size="small">剔除</el-tag>
+          <el-tag v-else type="success" size="small">有效</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="duration_seconds" label="时长(S)" width="100" />
       <el-table-column label="步骤总分" width="100" align="right">
         <template #default="{ row }">
@@ -195,9 +201,9 @@
       class="table-pager"
     />
 
-    <el-dialog v-model="editDlg" title="编辑测试记录" width="560px" @closed="onEditClosed">
+    <el-dialog v-model="editDlg" title="编辑评测记录" width="560px" @closed="onEditClosed">
       <el-form :model="editForm" label-width="120px">
-        <el-form-item label="记录ID">
+        <el-form-item label="评测记录ID">
           <el-input :model-value="editId" readonly />
         </el-form-item>
         <el-form-item label="动作执行描述">
@@ -206,6 +212,11 @@
         <el-form-item label="动作执行结果" required>
           <el-select v-model="editForm.result" style="width: 200px">
             <el-option v-for="r in EVAL_RECORD_RESULT" :key="r" :label="r" :value="r" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="editForm.status" style="width: 200px">
+            <el-option v-for="s in EVAL_RECORD_STATUS" :key="s" :label="s" :value="s" />
           </el-select>
         </el-form-item>
         <el-form-item label="时长(S)">
@@ -264,7 +275,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute } from "vue-router";
 import http from "@/api/http";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { EVAL_RECORD_RESULT } from "@/constants/options";
+import { EVAL_RECORD_RESULT, EVAL_RECORD_STATUS } from "@/constants/options";
 import { canWriteMaterial } from "@/stores/auth";
 import LazyTableVideo from "@/components/LazyTableVideo.vue";
 import { resolveMediaUrl } from "@/utils/media";
@@ -329,6 +340,11 @@ function formatRecordTotal(row: Record<string, unknown>) {
   const v = row.total_score;
   if (v === undefined || v === null) return "—";
   return String(v);
+}
+
+function recordStatusOf(row: Record<string, unknown>) {
+  const s = String(row.status ?? "有效");
+  return EVAL_RECORD_STATUS.includes(s) ? s : EVAL_RECORD_STATUS[0];
 }
 
 const recordStepDlg = ref(false);
@@ -489,6 +505,7 @@ const editId = ref<string | null>(null);
 const editForm = ref({
   action_description: "",
   result: EVAL_RECORD_RESULT[0],
+  status: EVAL_RECORD_STATUS[0],
   duration_seconds: 0,
   video_url: null as string | null,
 });
@@ -714,9 +731,30 @@ function startRec() {
   durationSeconds.value = 0;
 }
 
-async function stopRecSave() {
+/** 正通过「保存」上传录制时，等待该次上传结束（避免与提交并发重复处理）。 */
+function waitForRecordingUploadDone() {
+  if (!uploadingRec.value) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const stop = watch(
+      uploadingRec,
+      (v) => {
+        if (!v) {
+          stop();
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * 若正在录制且可停止，则停止、上传并写入 video URL 与时长。
+ * @param quiet 为 true 时不提示「录制已保存并上传」（如提交前自动保存）。
+ */
+async function flushActiveRecordingToServer(quiet = false) {
   if (!recorder || recorder.state === "inactive" || !recording.value) {
-    ElMessage.warning("请先开始");
     return;
   }
   discardRecording = false;
@@ -739,7 +777,9 @@ async function stopRecSave() {
           uploadedUrl.value = data.video_url;
           recording.value = false;
           recorder = null;
-          ElMessage.success("录制已保存并上传");
+          if (!quiet) {
+            ElMessage.success("录制已保存并上传");
+          }
           resolve();
         } catch (e) {
           reject(e);
@@ -748,11 +788,23 @@ async function stopRecSave() {
       r.stop();
     });
   } catch {
-    ElMessage.error("上传失败");
     recording.value = false;
     recorder = null;
+    throw new Error("upload_failed");
   } finally {
     uploadingRec.value = false;
+  }
+}
+
+async function stopRecSave() {
+  if (!recorder || recorder.state === "inactive" || !recording.value) {
+    ElMessage.warning("请先开始");
+    return;
+  }
+  try {
+    await flushActiveRecordingToServer(false);
+  } catch {
+    ElMessage.error("上传失败");
   }
 }
 
@@ -835,6 +887,15 @@ async function onUploadFile(uploadFile: { raw?: File }) {
 async function submitRecord() {
   saving.value = true;
   try {
+    await waitForRecordingUploadDone();
+    if (recording.value) {
+      try {
+        await flushActiveRecordingToServer(true);
+      } catch {
+        ElMessage.error("正在保存本段录制，请重试或检查网络后提交");
+        return;
+      }
+    }
     const body: Record<string, unknown> = {
       action_description: form.value.action_description,
       video_url: uploadedUrl.value,
@@ -868,9 +929,12 @@ function openEditRecord(row: Record<string, unknown>) {
   const res = String(row.result ?? "");
   const result =
     EVAL_RECORD_RESULT.find((r) => r === res) ?? EVAL_RECORD_RESULT[0];
+  const st = String(row.status ?? "有效");
+  const status = EVAL_RECORD_STATUS.find((x) => x === st) ?? EVAL_RECORD_STATUS[0];
   editForm.value = {
     action_description: String(row.action_description ?? ""),
     result,
+    status,
     duration_seconds: Math.max(0, Math.floor(Number(row.duration_seconds) || 0)),
     video_url: row.video_url != null && String(row.video_url) ? String(row.video_url) : null,
   };
@@ -916,12 +980,14 @@ async function saveEditRecord() {
     const body: {
       action_description: string;
       result: string;
+      status: string;
       duration_seconds: number;
       video_url?: string;
       step_scores?: { step_id: string; score: number }[];
     } = {
       action_description: editForm.value.action_description,
       result: editForm.value.result,
+      status: editForm.value.status,
       duration_seconds: Math.max(0, Math.floor(Number(editForm.value.duration_seconds) || 0)),
     };
     if (editVideoTouched.value && editForm.value.video_url) {
@@ -943,7 +1009,7 @@ async function saveEditRecord() {
 }
 
 async function del(row: Record<string, unknown>) {
-  await ElMessageBox.confirm("删除该记录？", "确认", { type: "warning" });
+  await ElMessageBox.confirm("删除该评测记录？", "确认", { type: "warning" });
   await http.delete(`/api/evaluations/records/${row._id}`);
   ElMessage.success("已删除");
   await loadRecords();
