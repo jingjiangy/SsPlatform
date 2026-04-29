@@ -29,4 +29,5 @@ export const MATERIAL_STATUS = ["搁置", "进行中", "测试中", "丢弃", "P
 export const EVAL_TASK_TYPES = ["实验任务", "PR任务"];
 export const EVAL_TASK_STATUS = ["已完成", "进行中", "待评测"];
 export const EVAL_RECORD_RESULT = ["成功", "失败"];
-export const EVAL_TEMPLATE_STATUS = ["进行中", "启用", "停用"];
+/** 评测步骤模板状态（仅启用 / 停用） */
+export const EVAL_TEMPLATE_STATUS = ["启用", "停用"];

@@ -25,6 +25,7 @@ from app.models.evaluation import (
     EvalTaskCreate,
     EvalTaskOut,
     EvalTaskUpdate,
+    normalize_eval_step_template_status,
 )
 from app.permissions import (
     P_EVAL_READ,
@@ -619,12 +620,12 @@ async def list_step_templates(
     for doc in items_raw:
         d = dict(doc)
         d.setdefault("description", "")
-        d.setdefault("status", "进行中")
         d.setdefault("version", "1.0")
         d.setdefault("updated_at", d.get("created_at"))
         d.setdefault("updated_by", d.get("created_by"))
         d["steps"] = normalize_template_steps(d.get("steps") or [])
         d["_id"] = str(d["_id"])
+        d["status"] = normalize_eval_step_template_status(d.get("status"))
         items.append(EvalStepTemplateOut.model_validate(d).model_dump(by_alias=True))
     return {"items": items, "total": total}
 
@@ -700,12 +701,12 @@ async def update_step_template(
     await enrich_actor_fields(db, [updated], fields=("created_by", "updated_by"))
     d = dict(updated)
     d.setdefault("description", "")
-    d.setdefault("status", "进行中")
     d.setdefault("version", "1.0")
     d.setdefault("updated_at", d.get("created_at"))
     d.setdefault("updated_by", d.get("created_by"))
     d["steps"] = normalize_template_steps(d.get("steps") or [])
     d["_id"] = str(d["_id"])
+    d["status"] = normalize_eval_step_template_status(d.get("status"))
     return EvalStepTemplateOut.model_validate(d).model_dump(by_alias=True)
 
 

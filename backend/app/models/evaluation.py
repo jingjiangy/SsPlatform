@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.common import validate_version
 
+_EVAL_TEMPLATE_STATUSES = frozenset({"启用", "停用"})
+
+
+def normalize_eval_step_template_status(st: object) -> str:
+    """模板状态仅「启用」「停用」；历史「进行中」等视作启用。"""
+    s = str(st or "").strip()
+    return "停用" if s == "停用" else "启用"
+
 
 class EvalStepIncoming(BaseModel):
     """评测任务步骤（创建/修改任务时）；id 可选，不传则自动生成。"""
@@ -36,9 +44,17 @@ class EvalStepTemplateStep(BaseModel):
 class EvalStepTemplateCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: str = ""
-    status: str = "进行中"
+    status: str = "启用"
     version: str = "1.0"
     steps: list[EvalStepTemplateStep] = Field(default_factory=list)
+
+    @field_validator("status")
+    @classmethod
+    def v_tpl_status(cls, v: str) -> str:
+        s = (v or "").strip()
+        if s not in _EVAL_TEMPLATE_STATUSES:
+            raise ValueError("模板状态须为「启用」或「停用」")
+        return s
 
     @field_validator("version")
     @classmethod
@@ -52,6 +68,16 @@ class EvalStepTemplateUpdate(BaseModel):
     status: Optional[str] = None
     version: Optional[str] = None
     steps: Optional[list[EvalStepTemplateStep]] = None
+
+    @field_validator("status")
+    @classmethod
+    def v_tpl_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        s = v.strip()
+        if s not in _EVAL_TEMPLATE_STATUSES:
+            raise ValueError("模板状态须为「启用」或「停用」")
+        return s
 
     @field_validator("version")
     @classmethod
