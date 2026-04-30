@@ -3,6 +3,28 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── HTTPS 证书 ────────────────────────────────────────────────────────────────
+CERT_DIR="${ROOT}/certs"
+KEY_FILE="${CERT_DIR}/server-key.pem"
+CERT_FILE="${CERT_DIR}/server-cert.pem"
+
+if [[ ! -f "$KEY_FILE" || ! -f "$CERT_FILE" ]]; then
+  echo "==> 生成自签名证书..."
+  mkdir -p "$CERT_DIR"
+  if command -v mkcert &>/dev/null; then
+    mkcert -key-file "$KEY_FILE" -cert-file "$CERT_FILE" localhost 127.0.0.1 "$(hostname)" 2>/dev/null || true
+  fi
+  if [[ ! -f "$KEY_FILE" ]]; then
+    openssl req -x509 -newkey rsa:2048 -nodes \
+      -keyout "$KEY_FILE" -out "$CERT_FILE" \
+      -days 3650 -subj "/CN=localhost" \
+      -addext "subjectAltName=IP:127.0.0.1,DNS:localhost" 2>/dev/null
+  fi
+fi
+
+export SSL_KEYFILE="$KEY_FILE"
+export SSL_CERTFILE="$CERT_FILE"
+
 # ── 从 backend/.env 读取配置 ──────────────────────────────────────────────────
 ENV_FILE="${ROOT}/backend/.env"
 if [[ -f "$ENV_FILE" ]]; then
@@ -47,9 +69,9 @@ pkill -9 python 2>/dev/null || true
 
 echo ""
 echo "======================================================"
-echo "  本机     http://127.0.0.1:${BACK_PORT}/login"
-[[ -n "${LAN_IP}" ]] && echo "  局域网   http://${LAN_IP}:${BACK_PORT}/login"
-echo "  API 文档  http://127.0.0.1:${BACK_PORT}/docs"
+echo "  本机     https://127.0.0.1:${BACK_PORT}/login"
+[[ -n "${LAN_IP}" ]] && echo "  局域网   https://${LAN_IP}:${BACK_PORT}/login"
+echo "  API 文档  https://127.0.0.1:${BACK_PORT}/docs"
 echo "======================================================"
 echo ""
 

@@ -27,5 +27,9 @@ class Settings(BaseSettings):
     reload: bool = False
     workers: int = 4
 
+    # HTTPS（留空则使用 HTTP）
+    ssl_keyfile: str = ""
+    ssl_certfile: str = ""
+
 
 settings = Settings()

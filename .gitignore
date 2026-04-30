@@ -23,6 +23,14 @@ ENV/
 .env.*
 backend/.env
 
+# TLS certificates
+certs/
+frontend/certs/
+
+# TLS certificates
+certs/
+frontend/certs/
+
 # Uploaded user files
 backend/uploads/*.mp4
 
