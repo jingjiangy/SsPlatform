@@ -6,10 +6,14 @@ const http = axios.create({
 });
 
 http.interceptors.request.use((config) => {
-  const t = localStorage.getItem("token");
-  if (t) {
-    config.headers.Authorization = `Bearer ${t}`;
-  }
+  try {
+    const raw = localStorage.getItem("auth-storage");
+    if (raw) {
+      const parsed = JSON.parse(raw) as { state?: { token?: string } };
+      const t = parsed?.state?.token;
+      if (t) config.headers.Authorization = `Bearer ${t}`;
+    }
+  } catch { /* ignore */ }
   return config;
 });
 
@@ -17,7 +21,7 @@ http.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem("token");
+      localStorage.removeItem("auth-storage");
       window.location.href = "/login";
     }
     return Promise.reject(err);

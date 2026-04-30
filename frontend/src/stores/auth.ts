@@ -1,10 +1,9 @@
-import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import http from "@/api/http";
 
 export type RoleCode = "admin" | "evaluator" | "rd" | "collector";
 
-/** 与后端 modules 字段一致 */
 export type AppModule =
   | "roles"
   | "users"
@@ -17,194 +16,144 @@ export type AppModule =
   | "fault_records"
   | "api_docs";
 
-function parseJsonArray(key: string): string[] {
-  try {
-    const s = localStorage.getItem(key);
-    if (!s) return [];
-    const j = JSON.parse(s) as unknown;
-    return Array.isArray(j) ? j.map(String) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** 未写入 modules 的旧登录态：按角色编码推断菜单（升级后需重新登录以使用 JWT perms） */
 function legacyModulesByRole(role: string): Set<AppModule> {
   const map: Record<string, Set<AppModule>> = {
-    admin: new Set([
-      "roles",
-      "users",
-      "materials",
-      "eval",
-      "eval_templates",
-      "robots",
-      "device_models",
-      "parts",
-      "fault_records",
-      "api_docs",
-    ]),
-    evaluator: new Set([
-      "users",
-      "materials",
-      "eval",
-      "eval_templates",
-      "robots",
-      "device_models",
-      "parts",
-      "fault_records",
-      "api_docs",
-    ]),
-    rd: new Set([
-      "materials",
-      "eval",
-      "eval_templates",
-      "robots",
-      "device_models",
-      "parts",
-      "fault_records",
-      "api_docs",
-    ]),
-    collector: new Set(["materials", "robots", "device_models", "parts", "fault_records"]),
+    admin: new Set(["roles","users","materials","eval","eval_templates","robots","device_models","parts","fault_records","api_docs"]),
+    evaluator: new Set(["users","materials","eval","eval_templates","robots","device_models","parts","fault_records","api_docs"]),
+    rd: new Set(["materials","eval","eval_templates","robots","device_models","parts","fault_records","api_docs"]),
+    collector: new Set(["materials","robots","device_models","parts","fault_records"]),
   };
   return map[role] ?? new Set();
 }
 
-export const useAuthStore = defineStore("auth", () => {
-  const token = ref<string | null>(localStorage.getItem("token"));
-  const role = ref<string | null>(localStorage.getItem("role"));
-  const username = ref<string | null>(localStorage.getItem("username"));
-  const userId = ref<string | null>(localStorage.getItem("userId"));
-  const modules = ref<string[]>(parseJsonArray("modules"));
-  const perms = ref<string[]>(parseJsonArray("perms"));
+interface AuthState {
+  token: string | null;
+  role: string | null;
+  username: string | null;
+  userId: string | null;
+  modules: string[];
+  perms: string[];
+  isLoggedIn: boolean;
+  setSession: (t: string, r: string, u: string, uid: string, mods?: string[], permList?: string[]) => void;
+  logout: () => void;
+  login: (username: string, password: string) => Promise<void>;
+}
 
-  const isLoggedIn = computed(() => !!token.value);
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      token: null,
+      role: null,
+      username: null,
+      userId: null,
+      modules: [],
+      perms: [],
+      isLoggedIn: false,
 
-  function setSession(
-    t: string,
-    r: string,
-    u: string,
-    uid: string,
-    mods?: string[],
-    permList?: string[]
-  ) {
-    token.value = t;
-    role.value = r;
-    username.value = u;
-    userId.value = uid;
-    localStorage.setItem("token", t);
-    localStorage.setItem("role", r);
-    localStorage.setItem("username", u);
-    localStorage.setItem("userId", uid);
-    const m = mods ?? [];
-    const p = permList ?? [];
-    modules.value = m;
-    perms.value = p;
-    localStorage.setItem("modules", JSON.stringify(m));
-    localStorage.setItem("perms", JSON.stringify(p));
-  }
+      setSession(t, r, u, uid, mods = [], permList = []) {
+        set({ token: t, role: r, username: u, userId: uid, modules: mods, perms: permList, isLoggedIn: true });
+      },
 
-  function logout() {
-    token.value = null;
-    role.value = null;
-    username.value = null;
-    userId.value = null;
-    modules.value = [];
-    perms.value = [];
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("username");
-    localStorage.removeItem("userId");
-    localStorage.removeItem("modules");
-    localStorage.removeItem("perms");
-  }
+      logout() {
+        set({ token: null, role: null, username: null, userId: null, modules: [], perms: [], isLoggedIn: false });
+      },
 
-  async function login(usernameIn: string, password: string) {
-    const { data } = await http.post("/api/auth/login", { username: usernameIn, password });
-    const u = data.user as {
-      id: string;
-      username: string;
-      role: string;
-      phone?: string;
-      modules?: string[];
-      perms?: string[];
-    };
-    setSession(
-      data.access_token,
-      u.role,
-      u.username,
-      u.id,
-      Array.isArray(u.modules) ? u.modules : [],
-      Array.isArray(u.perms) ? u.perms : []
-    );
-  }
+      async login(usernameIn, password) {
+        const { data } = await http.post("/api/auth/login", { username: usernameIn, password });
+        const u = data.user as { id: string; username: string; role: string; modules?: string[]; perms?: string[] };
+        set({
+          token: data.access_token,
+          role: u.role,
+          username: u.username,
+          userId: u.id,
+          modules: Array.isArray(u.modules) ? u.modules : [],
+          perms: Array.isArray(u.perms) ? u.perms : [],
+          isLoggedIn: true,
+        });
+      },
+    }),
+    {
+      name: "auth-storage",
+      partialize: (s) => ({ token: s.token, role: s.role, username: s.username, userId: s.userId, modules: s.modules, perms: s.perms, isLoggedIn: s.isLoggedIn }),
+    }
+  )
+);
 
-  return { token, role, username, userId, modules, perms, isLoggedIn, setSession, logout, login };
-});
+function getModules(): string[] {
+  try {
+    const raw = localStorage.getItem("auth-storage");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { state?: { modules?: string[] } };
+    return Array.isArray(parsed?.state?.modules) ? parsed.state.modules : [];
+  } catch { return []; }
+}
+
+function getPerms(): string[] {
+  try {
+    const raw = localStorage.getItem("auth-storage");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { state?: { perms?: string[] } };
+    return Array.isArray(parsed?.state?.perms) ? parsed.state.perms : [];
+  } catch { return []; }
+}
+
+function getRole(): string {
+  try {
+    const raw = localStorage.getItem("auth-storage");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { state?: { role?: string } };
+    return parsed?.state?.role ?? "";
+  } catch { return ""; }
+}
 
 export function canSeeModule(mod: AppModule): boolean {
-  const mods = parseJsonArray("modules");
-  if (mods.length > 0) {
-    return mods.includes(mod);
-  }
-  const r = localStorage.getItem("role") || "";
-  return legacyModulesByRole(r).has(mod);
+  const mods = getModules();
+  if (mods.length > 0) return mods.includes(mod);
+  return legacyModulesByRole(getRole()).has(mod);
 }
 
 export function canWriteMaterial(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("material:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("material:write");
+  const r = getRole();
   return r === "admin" || r === "evaluator" || r === "rd";
 }
 
 export function canWriteEvalTemplate(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("eval_template:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("eval_template:write");
+  const r = getRole();
   return r === "admin" || r === "evaluator" || r === "rd";
 }
 
 export function canWriteRobot(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("robot:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("robot:write");
+  const r = getRole();
   return r === "admin" || r === "rd";
 }
 
 export function canWriteDeviceModel(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("device_model:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("device_model:write");
+  const r = getRole();
   return r === "admin" || r === "rd";
 }
 
 export function canWritePart(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("part:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("part:write");
+  const r = getRole();
   return r === "admin" || r === "rd";
 }
 
 export function canWriteFaultRecord(): boolean {
-  const p = parseJsonArray("perms");
-  if (p.length > 0) {
-    return p.includes("fault_record:write");
-  }
-  const r = localStorage.getItem("role") || "";
+  const p = getPerms();
+  if (p.length > 0) return p.includes("fault_record:write");
+  const r = getRole();
   return r === "admin" || r === "rd";
 }
 
-/** 用于无权限访问当前页时的回退跳转（按常见顺序取第一个可见模块） */
 export function getFirstAccessiblePath(): string {
   const pairs: [AppModule, string][] = [
     ["materials", "/materials"],

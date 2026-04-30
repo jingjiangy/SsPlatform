@@ -1,4 +1,3 @@
-/** 角色可勾选的系统模块（与后端 app.permissions.VALID_MODULES 一致） */
 export const ROLE_MODULE_OPTIONS: { value: string; label: string }[] = [
   { value: "roles", label: "角色管理" },
   { value: "users", label: "账号管理" },
@@ -12,24 +11,14 @@ export const ROLE_MODULE_OPTIONS: { value: string; label: string }[] = [
   { value: "api_docs", label: "接口文档" },
 ];
 
-/** 机器人状态（与后端 model_ss / RobotCreate 校验一致） */
 export const ROBOT_STATUS = ["在线", "离线", "故障"];
-
-/** 配件状态（与 backend PART_STATUSES 一致） */
 export const PART_STATUS = ["在线", "离线", "故障"];
-
-/** 设备型号状态（与 backend DEVICE_MODEL_STATUSES 一致） */
 export const DEVICE_MODEL_STATUS = ["启用", "停用"];
-
-/** 故障记录状态（与 backend FAULT_STATUSES 一致） */
 export const FAULT_STATUS = ["待处理", "处理中", "已关闭"];
-
 export const MATERIAL_TYPES = ["原子任务", "长程任务", "PR任务", "试采集任务"];
 export const MATERIAL_STATUS = ["搁置", "进行中", "测试中", "丢弃", "PR已布", "可备用"];
 export const EVAL_TASK_TYPES = ["实验任务", "PR任务"];
 export const EVAL_TASK_STATUS = ["已完成", "进行中", "待评测"];
 export const EVAL_RECORD_RESULT = ["成功", "失败"];
-/** 单条评测记录是否计入统计：剔除不计入任务汇总与步骤均值 */
 export const EVAL_RECORD_STATUS = ["有效", "剔除"];
-/** 评测步骤模板状态（仅启用 / 停用） */
 export const EVAL_TEMPLATE_STATUS = ["启用", "停用"];

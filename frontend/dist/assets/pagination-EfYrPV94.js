@@ -1,1 +1,0 @@
-function s(r){if(r==null||r==="")return"—";const t=String(r).trim();return t?t.replace("T"," ").slice(0,19):"—"}const a=20;function i(r,t){const n=Math.max(1,Math.floor(r)||1),e=Math.max(1,t);return(n-1)*e}function o(r,t,n){return r<1?0:Math.max(0,r-t-n)}export{a as D,s as f,o as r,i as s};

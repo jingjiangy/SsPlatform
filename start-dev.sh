@@ -63,6 +63,67 @@ ensure_dev_https_certs() {
   echo "==> 已生成: ${KEY} 与 ${CRT}"
 }
 
+# ── 检查并安装后端依赖 ────────────────────────────────────────────────────────
+ensure_python_deps() {
+  echo "==> 检查 Python 依赖..."
+  # 用 pip show 批量检测：把 requirements.txt 里的包名全部提取出来一次性查询
+  local pkgs=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    local pkg
+    pkg="$(echo "$line" | sed 's/\[.*\]//' | sed 's/[>=<!;].*//' | tr -d ' ')"
+    [[ -n "$pkg" ]] && pkgs+=("$pkg")
+  done < "${ROOT}/requirements.txt"
+
+  if [[ "${#pkgs[@]}" -eq 0 ]]; then
+    echo "==> requirements.txt 为空，跳过"
+    return 0
+  fi
+
+  local missing_count
+  missing_count="$(pip3 show "${pkgs[@]}" 2>&1 | grep -c "WARNING: Package(s) not found" || true)"
+
+  if [[ "$missing_count" -gt 0 ]]; then
+    echo "==> 检测到缺少 Python 依赖，正在安装 requirements.txt..."
+    pip3 install -r "${ROOT}/requirements.txt"
+    echo "==> Python 依赖安装完成"
+  else
+    echo "==> Python 依赖已满足，跳过安装"
+  fi
+}
+
+# ── 检查并安装前端依赖 ────────────────────────────────────────────────────────
+ensure_node_deps() {
+  echo "==> 检查前端依赖..."
+  local node_modules="${ROOT}/frontend/node_modules"
+  local pkg_json="${ROOT}/frontend/package.json"
+  local needs_install=0
+
+  if [[ ! -d "$node_modules" ]]; then
+    needs_install=1
+  else
+    # 比较 package.json 与 node_modules/.package-lock.json / package-lock.json 的修改时间
+    local lockfile="${ROOT}/frontend/package-lock.json"
+    if [[ -f "$lockfile" ]] && [[ "$pkg_json" -nt "$lockfile" ]]; then
+      needs_install=1
+    elif [[ ! -f "$lockfile" ]]; then
+      needs_install=1
+    fi
+  fi
+
+  if [[ "$needs_install" -eq 1 ]]; then
+    echo "==> 检测到前端依赖未安装或 package.json 有更新，正在执行 npm install..."
+    cd "${ROOT}/frontend"
+    npm install
+    cd "${ROOT}"
+    echo "==> 前端依赖安装完成"
+  else
+    echo "==> 前端依赖已满足，跳过安装"
+  fi
+}
+
+ensure_python_deps
+ensure_node_deps
 ensure_dev_https_certs
 
 FRONT_SCHEME="http"
