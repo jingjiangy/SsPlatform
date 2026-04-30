@@ -217,10 +217,22 @@ app.include_router(fault_records.router, prefix="/api")
 
 install_beijing_datetime_json_encoder()
 
-
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+# 托管前端 dist/（生产模式下由 start-prod.sh 构建后存在）
+_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+if _dist.is_dir():
+    from fastapi.responses import FileResponse as _FileResponse
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str):
+        target = _dist / full_path
+        if target.is_file():
+            return _FileResponse(str(target))
+        return _FileResponse(str(_dist / "index.html"))
+
 
 
 if __name__ == "__main__":
