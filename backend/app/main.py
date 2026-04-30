@@ -221,3 +221,15 @@ install_beijing_datetime_json_encoder()
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.reload,
+        # reload 模式不支持多进程，生产环境（reload=False）才启用 workers
+        workers=None if settings.reload else settings.workers,
+    )
