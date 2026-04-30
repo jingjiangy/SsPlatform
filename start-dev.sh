@@ -110,7 +110,7 @@ ensure_node_deps() {
 
   if [[ ! -d "$nm" || ! -f "$lock" || "$pkg" -nt "$lock" ]]; then
     echo "==> 执行 npm install（使用淘宝镜像）..."
-    cd "${ROOT}/frontend" && npm install --registry=https://mirrors.tuna.tsinghua.edu.cn/npm/ && cd "${ROOT}"
+    cd "${ROOT}/frontend" && npm install --registry=https://registry.npmmirror.com && cd "${ROOT}"
     echo "$cur_node_ver" > "$node_ver_file"
   else
     echo "==> 前端依赖已满足，跳过"
