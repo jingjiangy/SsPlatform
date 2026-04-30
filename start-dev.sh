@@ -45,7 +45,10 @@ ensure_node_version() {
 
   if command -v nvm &>/dev/null; then
     nvm install "$NODE_REQUIRED" && nvm use "$NODE_REQUIRED" && nvm alias default "$NODE_REQUIRED"
-    echo "==> Node.js $(node -v) 安装完成"; return
+    echo "==> Node.js $(node -v) 安装完成"
+    echo "==> 清理旧 node_modules（Node 版本变更，需重装原生绑定）..."
+    rm -rf "${ROOT}/frontend/node_modules" "${ROOT}/frontend/package-lock.json"
+    return
   fi
 
   # 回退：系统包管理器
@@ -63,6 +66,8 @@ ensure_node_version() {
     echo "==> 错误：无法自动安装 Node.js，请手动安装 v${NODE_REQUIRED}+"; exit 1
   fi
   echo "==> Node.js $(node -v) 安装完成"
+  echo "==> 清理旧 node_modules（Node 版本变更，需重装原生绑定）..."
+  rm -rf "${ROOT}/frontend/node_modules" "${ROOT}/frontend/package-lock.json"
 }
 
 # 检查并安装 Python 依赖
@@ -91,10 +96,22 @@ ensure_node_deps() {
   local nm="${ROOT}/frontend/node_modules"
   local lock="${ROOT}/frontend/package-lock.json"
   local pkg="${ROOT}/frontend/package.json"
+  local node_ver_file="${ROOT}/frontend/node_modules/.node_version"
+  local cur_node_ver; cur_node_ver="$(node -v 2>/dev/null || echo unknown)"
+
+  # node_modules 存在但 Node 版本变了，需要重装（避免原生绑定不匹配）
+  if [[ -d "$nm" && -f "$node_ver_file" ]]; then
+    local installed_ver; installed_ver="$(cat "$node_ver_file")"
+    if [[ "$installed_ver" != "$cur_node_ver" ]]; then
+      echo "==> Node.js 版本变更（${installed_ver} -> ${cur_node_ver}），清理 node_modules 重装..."
+      rm -rf "$nm" "$lock"
+    fi
+  fi
 
   if [[ ! -d "$nm" || ! -f "$lock" || "$pkg" -nt "$lock" ]]; then
     echo "==> 执行 npm install..."
     cd "${ROOT}/frontend" && npm install && cd "${ROOT}"
+    echo "$cur_node_ver" > "$node_ver_file"
   else
     echo "==> 前端依赖已满足，跳过"
   fi
