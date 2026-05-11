@@ -1,0 +1,15 @@
+{
+  // 项目级 UI 显示设置：只在打开当前仓库时生效。
+  "editor.fontSize": 14,
+  "editor.lineHeight": 22,
+  "terminal.integrated.fontSize": 13,
+  "debug.console.fontSize": 13,
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+
+  // 目录树/列表显示密度。
+  "workbench.tree.indent": 18,
+  "workbench.tree.renderIndentGuides": "always",
+  "workbench.list.rowHeight": 24,
+  "explorer.compactFolders": false
+}

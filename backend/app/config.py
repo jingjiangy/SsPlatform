@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 项目根目录（backend/app/config.py → 上两级）
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # 数据库
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_db: str = "model_eval"
+
+    # 认证
+    secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
+    algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
+
+    # 文件上传
+    upload_dir: str = str(_PROJECT_ROOT / "uploads")
+    max_video_mb: int = 1000
+    max_image_mb: int = 100
+
+    # 服务器
+    host: str = "0.0.0.0"
+    port: int = 8077
+    reload: bool = False
+    workers: int = 4
+
+    # HTTPS（留空则使用 HTTP）
+    ssl_keyfile: str = ""
+    ssl_certfile: str = ""
+
+
+settings = Settings()
