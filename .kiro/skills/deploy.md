@@ -11,16 +11,21 @@
 - 项目路径：~/project/SsPlatform
 - 服务端口：8077
 
+## 服务器环境说明
+- Node.js 由 nvm 管理，需手动加载：`export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh"`
+- Python/pip 由 miniconda 管理，需激活 base 环境：`source ~/miniconda3/etc/profile.d/conda.sh && conda activate base`
+- SSH 非交互模式不会自动加载上述环境，每次远程执行命令都需要在命令前加载
+
 ## 执行步骤
 
-1. 本地 push 最新代码到 main 分支（如有未提交改动，先询问用户）
+1. 本地 push 最新代码到 main 分支（如有未提交改动，先询问用户 commit message）
 2. SSH 到服务器拉取最新代码：
    ```
    ssh jingjiang@192.168.31.40 "cd ~/project/SsPlatform && git pull origin main"
    ```
-3. 在服务器上执行部署脚本：
+3. 在服务器上执行部署脚本（加载 nvm + conda 环境）：
    ```
-   ssh jingjiang@192.168.31.40 "cd ~/project/SsPlatform && bash start.sh"
+   ssh jingjiang@192.168.31.40 'export NVM_DIR="$HOME/.nvm" && source "$NVM_DIR/nvm.sh" && source ~/miniconda3/etc/profile.d/conda.sh && conda activate base && cd ~/project/SsPlatform && bash start.sh'
    ```
 4. 等待 10 秒后检查服务是否启动成功：
    ```
@@ -34,6 +39,5 @@
      ```
 
 ## 注意事项
-- 部署前确认本地代码已 push，否则服务器 git pull 拉不到最新改动
 - start.sh 会自动 kill 旧进程再启动，无需手动停服务
 - 部署过程需要几分钟（前端构建耗时较长），耐心等待
